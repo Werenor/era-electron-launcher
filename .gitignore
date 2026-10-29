@@ -1,0 +1,11 @@
+dist/
+BuildInfo.cs
+*.exe
+*.pdb
+*.asar
+engine/
+game/
+instances.defaults.json
+*.log
+launcher.json*
+__pycache__/
