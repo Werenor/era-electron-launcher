@@ -74,6 +74,7 @@ internal sealed class EngineArchive : IDisposable {
 internal static class EngineCatalog {
     internal const string OfficialUrl = "https://gitgud.io/umaera/engine/era-electron/-/releases";
     internal static string Executable(string folder) {
+        if (!Directory.Exists(folder)) throw new IOException("引擎目录不存在：" + folder + "。请在引擎管理中重新定位或登记引擎。");
         string expected = Path.Combine(folder, "era-electron.exe"); if (File.Exists(expected)) return expected;
         var files = Directory.GetFiles(folder, "*.exe");
         foreach (string file in files) if (Path.GetFileName(file).IndexOf("era", StringComparison.OrdinalIgnoreCase) >= 0 && Path.GetFileName(file).IndexOf("uninstall", StringComparison.OrdinalIgnoreCase) < 0) return file;

@@ -11,28 +11,32 @@ internal sealed class LauncherForm : Form {
     readonly TextBox search = new TextBox(), name = new TextBox(), directory = new TextBox();
     readonly ComboBox engines = new ComboBox(), modes = new ComboBox();
     readonly NumericUpDown width = new NumericUpDown(), height = new NumericUpDown(), font = new NumericUpDown();
-    readonly CheckBox maximize = new CheckBox();
+    readonly CheckBox maximize = new CheckBox(), customWindow = new CheckBox { Text="自定义窗口", AutoSize=true };
     readonly Timer autoSave = new Timer { Interval = 350 };
-    readonly Label compatibility = new Label();
     readonly Label heading = new Label(), summary = new Label(), status = new Label(), saveHint = new Label();
     readonly Button launch = new Button(), stop = new Button();
     readonly RichTextBox output = new RichTextBox();
     readonly ListView engineList = new ListView();
     readonly TabControl tabs = new TabControl();
     readonly TabPage settings = new TabPage("实例设置"), logs = new TabPage("运行日志"), enginePage = new TabPage("引擎管理");
+    readonly TabPage about = new TabPage("关于");
     readonly Panel sidebar = new Panel();
     GameProfile current;
     GameSession session;
     string lastLog;
-    bool loading, dirty, closeAfterRun;
+    bool loading, dirty, closeAfterRun, installing;
     internal LauncherForm(LauncherConfig data) {
-        config = data;
-        Text = "Era-Electron启动器 v0.3.0"; ClientSize = new Size(1100, 730); MinimumSize = new Size(980, 690);
+        config = data; Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+        Text = "Era-Electron启动器 v0.4.0"; ClientSize = new Size(1100, 730); MinimumSize = new Size(980, 690);
         StartPosition = FormStartPosition.CenterScreen; Font = new Font("Microsoft YaHei UI", 9.5f);
         BackColor = Color.FromArgb(244, 246, 250); AutoScaleMode = AutoScaleMode.Font;
         BuildSidebar(); BuildContent(); RefreshEngines(); RefreshProfiles(config.SelectedId);
         autoSave.Tick += (s, e) => { autoSave.Stop(); if (dirty) SaveEditor(false); };
         FormClosing += OnLauncherClosing;
+        if (config.PathNotices.Count > 0) {
+            output.AppendText(String.Join(Environment.NewLine,config.PathNotices) + Environment.NewLine);
+            status.Text = "已自动恢复引擎路径，详情见运行日志。";
+        }
     }
     Button Button(string text, EventHandler action, bool primary = false) {
         var button = new Button { Text = text, Height = 35, Width = 116, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, Margin = new Padding(0, 0, 8, 0) };
@@ -68,15 +72,16 @@ internal sealed class LauncherForm : Form {
         summary.Dock = DockStyle.Fill; summary.ForeColor = Color.FromArgb(105, 119, 139); summary.AutoEllipsis = true;
         header.Controls.Add(summary); header.Controls.Add(heading);
         var bottom = new Panel { Dock = DockStyle.Bottom, Height = 92 };
-        status.Dock = DockStyle.Top; status.Height = 30; status.Text = "就绪 · 启动时校验版本，退出后清理临时引擎"; status.ForeColor = Color.FromArgb(69, 89, 116);
+        status.Dock = DockStyle.Top; status.Height = 30; status.Text = ""; status.ForeColor = Color.FromArgb(69, 89, 116);
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44 };
         SetupButton(launch, "启动游戏", Launch, true); launch.Width = 160;
         SetupButton(stop, "停止游戏", StopGame, false); stop.Enabled = false;
-        buttons.Controls.Add(launch); buttons.Controls.Add(stop); buttons.Controls.Add(Button("游戏目录", OpenGame)); buttons.Controls.Add(Button("日志目录", OpenLogs));
+        buttons.Controls.Add(Button("检查启动器更新", CheckUpdate)); buttons.Controls.Add(launch); buttons.Controls.Add(stop); buttons.Controls.Add(Button("游戏目录", OpenGame)); buttons.Controls.Add(Button("日志目录", OpenLogs));
         bottom.Controls.Add(buttons); bottom.Controls.Add(status);
         tabs.Dock = DockStyle.Fill; tabs.Padding = new Point(16, 8); tabs.TabPages.Add(settings); tabs.TabPages.Add(logs); tabs.TabPages.Add(enginePage);
         settings.Padding = new Padding(18); settings.BackColor = logs.BackColor = enginePage.BackColor = Color.White;
-        BuildSettings(); BuildLogs(); BuildEngines();
+        tabs.TabPages.Add(about); about.BackColor=Color.White;
+        BuildSettings(); BuildLogs(); BuildEngines(); BuildAbout();
         content.Controls.Add(tabs); content.Controls.Add(header); content.Controls.Add(bottom); Controls.Add(content); content.BringToFront();
     }
     void SetupButton(Button button, string text, EventHandler handler, bool primary) {
@@ -95,18 +100,17 @@ internal sealed class LauncherForm : Form {
         modes.Items.AddRange(BuildInfo.Modes);
         var dimensions = new FlowLayoutPanel { FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
         width.Minimum = 640; width.Maximum = 3840; height.Minimum = 480; height.Maximum = 2160; width.Width = height.Width = 102;
-        dimensions.Controls.Add(width); dimensions.Controls.Add(new Label { Text = "×", Width = 25, TextAlign = ContentAlignment.MiddleCenter }); dimensions.Controls.Add(height);
+        dimensions.Controls.Add(customWindow); dimensions.Controls.Add(width); dimensions.Controls.Add(new Label { Text = "×", Width = 25, TextAlign = ContentAlignment.MiddleCenter }); dimensions.Controls.Add(height);
         dimensions.Controls.Add(new Label { Text = "  宽 × 高", Width = 90, TextAlign = ContentAlignment.MiddleCenter });
         font.Minimum = 10; font.Maximum = 32; font.Width = 95;
         maximize.Text = "启动时最大化"; maximize.AutoSize = true;
         Row(table, "游戏名称", name, 0); Row(table, "游戏目录", directory, 1); Row(table, "引擎安装", engines, 2); Row(table, "输入模式", modes, 3); Row(table, "窗口尺寸", dimensions, 4); Row(table, "文字字号", font, 5); Row(table, "窗口行为", maximize, 6);
-        var explanation = compatibility;
-        compatibility.Dock=DockStyle.Top; compatibility.Height=65; compatibility.ForeColor=Color.FromArgb(105,119,139);
 
         var actions = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 45 };
-        actions.Controls.Add(Button("恢复默认窗口", (s, e) => { width.Value = 1200; height.Value = 1000; font.Value = 16; maximize.Checked = false; }));
+        actions.Controls.Add(Button("使用游戏原始窗口", (s, e) => { customWindow.Checked=false; width.Value = 1200; height.Value = 1000; font.Value = 16; maximize.Checked = false; }));
         saveHint.AutoSize = true; saveHint.ForeColor = Color.FromArgb(160, 110, 32); saveHint.Padding = new Padding(0, 9, 0, 0); actions.Controls.Add(saveHint);
-        settings.Controls.Add(actions); settings.Controls.Add(explanation); settings.Controls.Add(table);
+        settings.Controls.Add(actions); settings.Controls.Add(table);
+        customWindow.CheckedChanged += (s,e)=>{ UpdateWindowControls(); Edited(s,e); };
         name.TextChanged += Edited; engines.SelectedIndexChanged += (s,e) => { if (loading) return; UpdateModes(modes.SelectedItem == null ? "standard" : ((EngineMode)modes.SelectedItem).Id); Edited(s,e); }; modes.SelectedIndexChanged += Edited; width.ValueChanged += Edited; height.ValueChanged += Edited; font.ValueChanged += Edited; maximize.CheckedChanged += Edited;
     }
     void BuildLogs() {
@@ -116,26 +120,47 @@ internal sealed class LauncherForm : Form {
         actions.Controls.Add(Button("打开日志目录", OpenLogs));
         logs.Controls.Add(output); logs.Controls.Add(actions);
     }
+    internal static string LegalText(string resource) {
+        using(var stream=typeof(LauncherForm).Assembly.GetManifestResourceStream(resource)) {
+            if(stream==null)throw new InvalidDataException("启动器缺少许可证资源，请使用完整发布包。");
+            using(var reader=new StreamReader(stream))return reader.ReadToEnd();
+        }
+    }
+    void BuildAbout() {
+        about.Padding=new Padding(16);
+        var title=new Label {Dock=DockStyle.Top,Height=76,Text="Era-Electron 启动器 v0.4.0\r\n独立第三方启动器 · GPL-2.0 许可证",Font=new Font(Font.FontFamily,12),Padding=new Padding(0,5,0,0)};
+        var documents=new TabControl {Dock=DockStyle.Fill};
+        foreach(var entry in new[] {new[]{"许可证","Launcher.LICENSE"},new[]{"第三方声明","Launcher.NOTICES"}}) {
+            var page=new TabPage(entry[0]) {Padding=new Padding(10)};
+            page.Controls.Add(new TextBox {Name=entry[1],Dock=DockStyle.Fill,ReadOnly=true,Multiline=true,WordWrap=entry[1]!="Launcher.LICENSE",ScrollBars=ScrollBars.Both,
+                BorderStyle=BorderStyle.None,BackColor=Color.White,Font=new Font("Consolas",9.5f),
+                Text=LegalText(entry[1]).Replace("\r\n","\n").Replace("\r","\n").Replace("\n",Environment.NewLine)});
+            documents.TabPages.Add(page);
+        }
+        about.Controls.Add(documents); about.Controls.Add(title);
+    }
     void BuildEngines() {
         enginePage.Padding = new Padding(12); engineList.Dock = DockStyle.Fill; engineList.View = View.Details; engineList.FullRowSelect = true; engineList.MultiSelect = false;
         engineList.Columns.Add("引擎安装", 180); engineList.Columns.Add("版本", 100); engineList.Columns.Add("目录", 380);
-        var actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 45, Padding = new Padding(0, 7, 0, 0) };
-        actions.Controls.Add(Button("登记引擎目录", AddEngine)); actions.Controls.Add(Button("校验引擎", CheckEngine)); actions.Controls.Add(Button("打开目录", (s, e) => { if (engineList.SelectedItems.Count > 0) OpenFolder(LauncherPaths.Resolve(((EngineInstall)engineList.SelectedItems[0].Tag).Directory)); }));
-        var hint = new Label { Dock = DockStyle.Top, Height = 52, Text = "可以登记多个 Era-Electron 版本，每个游戏独立选择。\n标准启动不限制版本；实时按键与临时窗口扩展按引擎适配。", ForeColor = Color.FromArgb(105, 119, 139) };
+        var actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 85, Padding = new Padding(0, 7, 0, 0) };
+        actions.Controls.Add(Button("下载引擎", DownloadEngine)); actions.Controls.Add(Button("安装下载的 ZIP", InstallEngineZip)); actions.Controls.Add(Button("登记引擎目录", AddEngine)); actions.Controls.Add(Button("校验引擎", CheckEngine)); actions.Controls.Add(Button("打开目录", (s, e) => { if (engineList.SelectedItems.Count > 0) OpenFolder(LauncherPaths.Resolve(((EngineInstall)engineList.SelectedItems[0].Tag).Directory)); }));
+        actions.Controls.Add(Button("重新定位引擎", RelocateEngine));
         actions.Controls.Add(Button("引擎官方发布页", (s,e) => Process.Start(new ProcessStartInfo(EngineCatalog.OfficialUrl) { UseShellExecute=true })));
-        enginePage.Controls.Add(engineList); enginePage.Controls.Add(actions); enginePage.Controls.Add(hint);
+        enginePage.Controls.Add(engineList); enginePage.Controls.Add(actions);
     }
     void UpdateModes(string desired) {
         bool old=loading; loading=true;
         var engine=engines.SelectedItem as EngineInstall;
         bool adapted=EngineCatalog.Adapted(engine);
-        modes.Items.Clear(); modes.Items.Add(BuildInfo.Modes[0]); if(adapted) modes.Items.Add(BuildInfo.Modes[1]);
-        modes.SelectedItem=adapted && desired=="keystate" ? BuildInfo.Modes[1] : BuildInfo.Modes[0];
-        width.Enabled=height.Enabled=font.Enabled=maximize.Enabled=adapted;
-        compatibility.Text=adapted ? "设置自动保存；窗口参数只影响运行时，不会改写游戏配置。\n实时按键模式为支持 keystate 的游戏提供按住/松开状态。" : "设置自动保存。此引擎使用原版标准启动，窗口由游戏配置决定。\n可以登记其他任意版本；实时按键等扩展需单独适配。";
+        modes.Items.Clear(); modes.Items.Add(BuildInfo.Modes[0]);
+        if(adapted) modes.Items.Add(BuildInfo.Modes[1]);
+        else if(desired=="keystate") modes.Items.Add(new EngineMode {Id="keystate",Name="实时按键（当前引擎不兼容，请切换标准输入）",KeyState=true});
+        modes.SelectedIndex=desired=="keystate" && modes.Items.Count>1 ? 1 : 0;
+        customWindow.Enabled=adapted; UpdateWindowControls();
         loading=old;
     }
-    void Edited(object sender, EventArgs e) { if (!loading && current != null) { dirty=true; saveHint.Text="正在自动保存…"; autoSave.Stop(); autoSave.Start(); } }
+    void UpdateWindowControls() { width.Enabled=height.Enabled=font.Enabled=maximize.Enabled=customWindow.Checked && EngineCatalog.Adapted(engines.SelectedItem as EngineInstall); }
+    void Edited(object sender, EventArgs e) { if (!loading && current != null) { dirty=true; saveHint.Text=""; autoSave.Stop(); autoSave.Start(); } }
     void RefreshProfiles(string selected) {
         loading = true; profiles.Items.Clear();
         foreach (var p in config.Profiles.Where(p => String.IsNullOrEmpty(search.Text) || p.Name.IndexOf(search.Text, StringComparison.OrdinalIgnoreCase) >= 0)) profiles.Items.Add(p);
@@ -151,8 +176,8 @@ internal sealed class LauncherForm : Form {
         current = next; loading = true;
         settings.Enabled = launch.Enabled = next != null;
         if (next != null) {
-            heading.Text = next.Name; summary.Text = "上次启动：" + (String.IsNullOrEmpty(next.LastPlayed) ? "尚未启动" : next.LastPlayed) + "\n" + LauncherPaths.Resolve(next.Directory);
-            name.Text = next.Name; directory.Text = LauncherPaths.Resolve(next.Directory); engines.SelectedItem = config.Engines.Find(e => e.Id == next.EngineId); UpdateModes(next.ModeId);
+            heading.Text = next.Name; summary.Text = "上次启动：" + (String.IsNullOrEmpty(next.LastPlayed) ? "尚未启动" : next.LastPlayed) + "\n" + EnginePaths.Display(next.Directory);
+            customWindow.Checked=next.CustomWindow; name.Text = next.Name; directory.Text = EnginePaths.Display(next.Directory); engines.SelectedItem = config.Engines.Find(e => e.Id == next.EngineId); UpdateModes(next.ModeId);
             width.Value = Math.Max(640, Math.Min(3840, next.Width)); height.Value = Math.Max(480, Math.Min(2160, next.Height)); font.Value = Math.Max(10, Math.Min(32, next.FontSize)); maximize.Checked = next.AutoMax;
             config.SelectedId = next.Id;
         } else { heading.Text = "尚未添加游戏"; summary.Text = "可以导入一个本地游戏目录。"; }
@@ -163,12 +188,12 @@ internal sealed class LauncherForm : Form {
         if (current == null) return false;
         try {
             var copy = current.Copy(); copy.Name = name.Text.Trim(); copy.EngineId = engines.SelectedItem == null ? null : ((EngineInstall)engines.SelectedItem).Id; copy.ModeId = modes.SelectedItem == null ? null : ((EngineMode)modes.SelectedItem).Id;
-            copy.Width = (int)width.Value; copy.Height = (int)height.Value; copy.FontSize = (int)font.Value; copy.AutoMax = maximize.Checked;
+            copy.CustomWindow=customWindow.Checked; copy.Width = (int)width.Value; copy.Height = (int)height.Value; copy.FontSize = (int)font.Value; copy.AutoMax = maximize.Checked;
             LauncherStore.Validate(copy, config);
             int index = config.Profiles.FindIndex(p => p.Id == current.Id); config.Profiles[index] = copy;
             try { LauncherStore.Save(config); } catch { config.Profiles[index] = current; throw; }
             current = copy; loading = true; for (int item=0; item<profiles.Items.Count; item++) if (((GameProfile)profiles.Items[item]).Id==copy.Id) { profiles.Items[item]=copy; break; } loading = false;
-            heading.Text = copy.Name; dirty = false; saveHint.Text = "已自动保存"; profiles.Invalidate(); return true;
+            heading.Text = copy.Name; dirty = false; saveHint.Text = ""; profiles.Invalidate(); return true;
         } catch (Exception e) { saveHint.Text=e.Message; if(showErrors) Error(e.Message); return false; }
     }
     void ImportGame(object sender, EventArgs e) {
@@ -184,9 +209,46 @@ internal sealed class LauncherForm : Form {
         LauncherStore.Remove(config, current.Id); current = null; dirty = false; Persist(); RefreshProfiles(null);
     }
     void RefreshEngines() {
+        var selected=engines.SelectedItem as EngineInstall;
         loading = true; engines.Items.Clear(); engineList.Items.Clear();
-        foreach (var install in config.Engines) { engines.Items.Add(install); var item = new ListViewItem(install.Name) { Tag = install }; try { EngineCatalog.Inspect(install); } catch { install.Version=install.Version ?? "目录不可用"; } item.SubItems.Add(install.Version); item.SubItems.Add(LauncherPaths.Resolve(install.Directory)); engineList.Items.Add(item); }
+        foreach (var install in config.Engines) { engines.Items.Add(install); var item = new ListViewItem(install.Name) { Tag = install }; string label;
+            try { EngineCatalog.Inspect(install); label=install.Version; } catch { label=(install.Version ?? "未知版本")+"（目录不可用）"; }
+            item.SubItems.Add(label); item.SubItems.Add(EnginePaths.Display(install.Directory)); engineList.Items.Add(item); }
+        if(selected!=null) engines.SelectedItem=config.Engines.Find(e=>e.Id==selected.Id);
         loading = false;
+    }
+    bool PickEngineLocation(EngineInstall install) {
+        using(var dialog=new FolderBrowserDialog {Description="重新选择该引擎目录；保留现有游戏绑定"}) {
+            if(dialog.ShowDialog(this)!=DialogResult.OK)return false;
+            try {
+                var candidate=new EngineInstall {Directory=dialog.SelectedPath}; EngineCatalog.Inspect(candidate);
+                install.Directory=Path.GetFullPath(candidate.Directory); install.Version=candidate.Version; install.ArchiveHash=candidate.ArchiveHash;
+                if(!Persist())return false;
+                RefreshEngines(); if(current!=null) UpdateModes(current.ModeId);
+                status.Text="已更新引擎路径，原有游戏绑定保持。"; return true;
+            } catch(Exception error) {Error(error.Message);return false;}
+        }
+    }
+    bool EnsureEngineLocation(EngineInstall install) {
+        if(EnginePaths.Present(install.Directory))return true;
+        if(EnginePaths.Recover(config,install)) {if(!Persist())return false;RefreshEngines();status.Text="已找到并恢复原引擎。";return true;}
+        if(MessageBox.Show(this,"引擎目录已失效：\n"+EnginePaths.Display(install.Directory)+
+            "\n\n无法唯一确认原引擎。是否重新选择引擎目录？取消不会删除登记或游戏。","重新定位引擎",MessageBoxButtons.OKCancel,MessageBoxIcon.Information)!=DialogResult.OK)return false;
+        return PickEngineLocation(install);
+    }
+    void RelocateEngine(object sender,EventArgs e) {
+        if(engineList.SelectedItems.Count==0) {Info("请先选中一个引擎。");return;}
+        PickEngineLocation((EngineInstall)engineList.SelectedItems[0].Tag);
+    }
+    bool EnsureGameLocation() {
+        try {if(LauncherStore.IsGame(LauncherPaths.Resolve(current.Directory)))return true;}catch { }
+        if(MessageBox.Show(this,"原游戏目录不可用。是否重新选择包含游戏入口及存档的原游戏目录？",
+            "重新定位游戏",MessageBoxButtons.OKCancel,MessageBoxIcon.Information)!=DialogResult.OK)return false;
+        using(var dialog=new FolderBrowserDialog {Description="选择原游戏目录；不会创建或复制存档"}) {
+            if(dialog.ShowDialog(this)!=DialogResult.OK)return false;
+            if(!LauncherStore.IsGame(dialog.SelectedPath)) {Error("该目录缺少游戏入口，请选择游戏根目录。");return false;}
+            current.Directory=Path.GetFullPath(dialog.SelectedPath); directory.Text=current.Directory; return true;
+        }
     }
     void AddEngine(object sender, EventArgs e) {
         using (var dialog = new FolderBrowserDialog { Description = "选择任意版本的 Era-Electron 引擎目录" }) if (dialog.ShowDialog(this) == DialogResult.OK) {
@@ -196,23 +258,74 @@ internal sealed class LauncherForm : Form {
             } catch (Exception error) { Error(error.Message); }
         }
     }
+    async void DownloadEngine(object sender, EventArgs e) {
+        try {
+
+            using(var dialog=new ReleaseDialog()) {
+                if(dialog.ShowDialog(this)!=DialogResult.OK) return;
+                var asset=dialog.Selected;
+                if(!asset.Direct) { Process.Start(new ProcessStartInfo(asset.Url){UseShellExecute=true}); Info("官方链接为网盘页面。请在浏览器下载 Windows ZIP，再点击‘安装下载的 ZIP’完成安装。"); return; }
+                using(var folder=new FolderBrowserDialog {Description="选择引擎安装父目录"}) if(folder.ShowDialog(this)==DialogResult.OK) {
+                    var button=sender as Button; if(button!=null)button.Enabled=false;
+                    try {
+                        installing=true; string path=await Downloads.DownloadAndInstall(asset,folder.SelectedPath,text=>UI(()=>status.Text=text));
+                        RegisterDownloaded(path);
+                    } finally {installing=false;if(button!=null)button.Enabled=true;}
+                }
+            }
+        } catch(Exception error) {Error(error.Message);}
+    }
+    async void InstallEngineZip(object sender, EventArgs e) {
+        try {
+            using(var file=new OpenFileDialog {Filter="ZIP 引擎包|*.zip",Title="选择已下载的 Windows 引擎 ZIP"})
+            using(var folder=new FolderBrowserDialog {Description="选择引擎安装父目录"}) {
+                if(file.ShowDialog(this)!=DialogResult.OK || folder.ShowDialog(this)!=DialogResult.OK)return;
+                var button=sender as Button;if(button!=null)button.Enabled=false;
+                try { installing=true; string path=await System.Threading.Tasks.Task.Run(()=>Downloads.InstallZip(file.FileName,folder.SelectedPath)); RegisterDownloaded(path);
+                    try {File.Delete(file.FileName);}catch(Exception cleanup){Info("引擎已安装，但安装包清理失败："+cleanup.Message);} }
+                finally {installing=false;if(button!=null)button.Enabled=true;}
+            }
+        } catch(Exception error) {Error(error.Message);}
+    }
+    void RegisterDownloaded(string path) {
+        var install=new EngineInstall {Id=Guid.NewGuid().ToString("N"),Name=Path.GetFileName(path),Directory=path};
+        EngineCatalog.Inspect(install); config.Engines.Add(install); Persist(); RefreshEngines();
+        if(current!=null) engines.SelectedItem=config.Engines.Find(x=>x.Id==current.EngineId);
+        status.Text="引擎已安装并登记："+install.Version;
+    }
+    async void CheckUpdate(object sender, EventArgs e) {
+        var button=sender as Button;if(button!=null)button.Enabled=false;
+        try {
+            var release=await Downloads.LauncherLatest();
+            Version latest; if(!Version.TryParse(release.Tag.TrimStart('v','V'),out latest))throw new IOException("发布版本号无法识别。");
+            if(latest<=new Version("0.4.0")) {Info("当前已是最新版本（v0.4.0）。");return;}
+            if(MessageBox.Show(this,"发现新版 "+release.Tag+"\n\n"+release.Notes+"\n\n打开发布页下载？","启动器更新",MessageBoxButtons.YesNo,MessageBoxIcon.Information)==DialogResult.Yes)
+                Process.Start(new ProcessStartInfo(release.Url){UseShellExecute=true});
+        } catch(Exception error) {Error("更新检查失败："+error.Message);}
+        finally {installing=false;if(button!=null)button.Enabled=true;}
+    }
     void CheckEngine(object sender, EventArgs e) {
         if (engineList.SelectedItems.Count == 0) { Info("请先选中一个引擎。"); return; }
         var install = (EngineInstall)engineList.SelectedItems[0].Tag; Cursor = Cursors.WaitCursor;
+        if(!EnsureEngineLocation(install)) {Cursor=Cursors.Default;return;}
         try { GameSession.ValidateEngine(install, BuildInfo.Modes[0]); if(EngineCatalog.Adapted(install)) GameSession.ValidateEngine(install,BuildInfo.Modes[1]); Info("校验通过："+install.Version+(EngineCatalog.Adapted(install) ? "，支持实时按键扩展。" : "，使用原版标准启动。")); }
         catch (Exception error) { Error(error.Message); } finally { Cursor = Cursors.Default; }
     }
     void Launch(object sender, EventArgs e) {
-        if (session != null || !SaveEditor(true)) return;
+        if (session != null || current==null || !EnsureGameLocation()) return;
+        var selectedEngine=engines.SelectedItem as EngineInstall;
+        if(selectedEngine==null) {Error("请先登记并选择一个引擎版本。");return;}
+        if(!EnsureEngineLocation(selectedEngine) || !SaveEditor(true))return;
         var profile = current.Copy(); var engine = config.Engines.Find(x => x.Id == profile.EngineId); var mode = BuildInfo.Modes.First(x => x.Id == profile.ModeId);
         if(engine == null) { Error("请先登记并选择一个引擎版本。"); return; }
+        try {GameSession.ValidateEngine(engine,mode);}catch(Exception error) {Error(error.Message);return;}
         output.Clear(); tabs.SelectedTab = logs; sidebar.Enabled = settings.Enabled = enginePage.Enabled = launch.Enabled = false; stop.Enabled = true;
         session = new GameSession();
         session.Message += line => UI(() => { if (output.TextLength > 150000) output.Text = output.Text.Substring(output.TextLength - 100000); output.AppendText(line + Environment.NewLine); output.ScrollToCaret(); });
-        session.State += text => UI(() => status.Text = text);
+        session.State += text => UI(() => status.Text = text.StartsWith("运行中") || text.StartsWith("正在停止") ? text : "正在处理…");
         session.Finished += result => UI(() => {
             session = null; sidebar.Enabled = settings.Enabled = enginePage.Enabled = launch.Enabled = true; stop.Enabled = false; lastLog = result.LogFile;
-            status.Text = result.Error != null ? "启动失败 · 查看运行日志" : result.CleanupComplete ? "已结束 · 临时会话已清理" : "已结束 · 部分文件留待下次清理";
+            status.Text = result.Error != null ? "启动失败 · 查看运行日志" : result.CleanupComplete ? "已结束" : "已结束 · 部分文件留待下次清理";
             if (result.Started) { var item = config.Profiles.Find(x => x.Id == profile.Id); item.LastPlayed = DateTime.Now.ToString("yyyy-MM-dd HH:mm"); Persist(); summary.Text = "上次启动：" + item.LastPlayed + "\n" + LauncherPaths.Resolve(item.Directory); }
             if (closeAfterRun) Close();
         });
@@ -220,12 +333,13 @@ internal sealed class LauncherForm : Form {
     }
     void StopGame(object sender, EventArgs e) { if (session != null && MessageBox.Show("停止游戏可能丢失未保存的进度。确定停止？", "停止游戏", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes) { session.Stop(); stop.Enabled = false; } }
     void OnLauncherClosing(object sender, FormClosingEventArgs e) {
+        if(installing) {e.Cancel=true;Info("引擎正在下载或安装，请完成后再退出，确保安装包和暂存得到清理。");return;}
         if (session != null) { e.Cancel = true; if (!closeAfterRun && MessageBox.Show("游戏仍在运行。停止并清理后退出启动器？", "退出启动器", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes) { closeAfterRun = true; session.Stop(); } }
         else { autoSave.Stop(); if(dirty && current != null) SaveEditor(false); Persist(); }
     }
     protected override void Dispose(bool disposing) { if(disposing) { autoSave.Stop(); autoSave.Dispose(); } base.Dispose(disposing); }
     void UI(Action action) { if (!IsDisposed && IsHandleCreated) { try { BeginInvoke(action); } catch (InvalidOperationException) { } } }
-    void Persist() { try { LauncherStore.Save(config); } catch (Exception e) { Error("无法保存启动器配置：" + e.Message); } }
+    bool Persist() { try { LauncherStore.Save(config); return true; } catch (Exception e) { Error("无法保存启动器配置：" + e.Message); return false; } }
     void OpenGame(object sender, EventArgs e) { if (current != null) OpenFolder(LauncherPaths.Resolve(current.Directory)); }
     void OpenLogs(object sender, EventArgs e) { string folder = Path.Combine(LauncherPaths.UserRoot, "logs"); Directory.CreateDirectory(folder); OpenFolder(folder); }
     void OpenFolder(string folder) { try { if (!Directory.Exists(folder)) { Error("目录不存在：" + folder); return; } Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true }); } catch (Exception e) { Error(e.Message); } }

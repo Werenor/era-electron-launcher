@@ -24,6 +24,11 @@ internal sealed class GameSession {
     void Status(string text) { Log(text); if (State != null) State(text); }
     internal void Stop() { stop = true; }
     void CheckStop() { if (stop) throw new OperationCanceledException(); }
+    static void ValidateComponent(string relative,string expected) {
+        string path=Path.Combine(LauncherPaths.Home,relative);
+        if(!File.Exists(path))throw new IOException("启动组件缺失："+relative+"。请完整解压同一版本的启动器发布包。");
+        if(SessionTools.Sha(path)!=expected)throw new IOException("启动组件校验失败："+relative+"。请使用同一完整发布包中的启动器及组件，勿混用不同构建。");
+    }
     internal void Start(GameProfile profile, EngineInstall install, EngineMode mode) {
         new Thread(() => Run(profile.Copy(), install, mode)) { IsBackground = false, Name = "game-session" }.Start();
     }
@@ -32,8 +37,8 @@ internal sealed class GameSession {
         EngineCatalog.Inspect(install);
         if (mode.KeyState && !EngineCatalog.Adapted(install)) throw new IOException("该版本尚未适配 keystate 扩展，请选择标准输入模式。");
         if (EngineCatalog.Adapted(install)) {
-            if (SessionTools.Sha(Path.Combine(LauncherPaths.Home,"patches","launcher-window.js")) != BuildInfo.BridgeHash) throw new IOException("启动桥校验失败。");
-            if (mode.KeyState && (SessionTools.Sha(Path.Combine(LauncherPaths.Home,"patches","keystate.cjs")) != BuildInfo.KeyStateHash || SessionTools.Sha(Path.Combine(LauncherPaths.Home,"KeyStateProbe.exe")) != BuildInfo.HelperHash)) throw new IOException("按键扩展组件校验失败。");
+            ValidateComponent(Path.Combine("patches","launcher-window.js"),BuildInfo.BridgeHash);
+            if (mode.KeyState) {ValidateComponent(Path.Combine("patches","keystate.cjs"),BuildInfo.KeyStateHash);ValidateComponent("KeyStateProbe.exe",BuildInfo.HelperHash);}
         }
     }
     internal static string GameMutexName(string directory) {
@@ -71,7 +76,8 @@ internal sealed class GameSession {
                 Arguments="--user-data-dir=\"" + profileDirectory + "\"" };
             start.EnvironmentVariables.Remove("ELECTRON_RUN_AS_NODE");
             start.EnvironmentVariables["PORT_ARCADE_GAME_PATH"] = gameDirectory;
-            start.EnvironmentVariables["PORT_ARCADE_WINDOW_JSON"] = LauncherStore.Json.Serialize(new { width = profile.Width, height = profile.Height, fontSize = profile.FontSize, autoMax = profile.AutoMax });
+            start.EnvironmentVariables.Remove("PORT_ARCADE_WINDOW_JSON");
+            if(profile.CustomWindow) start.EnvironmentVariables["PORT_ARCADE_WINDOW_JSON"] = LauncherStore.Json.Serialize(new { width = profile.Width, height = profile.Height, fontSize = profile.FontSize, autoMax = profile.AutoMax });
             Log("游戏：" + gameDirectory); Log("引擎：" + install.Name + " / " + mode.Name); Log("临时会话：" + session);
             process = Process.Start(start); result.Started = true; Status("运行中 · " + profile.Name);
             bool seenWindow = false; DateTime missingSince = DateTime.MaxValue, stoppingSince = DateTime.MaxValue;

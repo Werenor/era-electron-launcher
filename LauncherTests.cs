@@ -7,7 +7,7 @@ using System.Threading;
 using System.Windows.Forms;
 internal static class LauncherTests {
     static void Verify(bool value, string text) { if (!value) throw new Exception(text); }
-    static void FakeArchive(string file, string version) {
+    internal static void FakeArchive(string file, string version) {
         byte[] package = Encoding.UTF8.GetBytes("{\"version\":\"" + version + "\"}");
         byte[] json = Encoding.UTF8.GetBytes(LauncherStore.Json.Serialize(new { files = new Dictionary<string, object> { { "package.json", new { size = package.Length, offset = "0" } } } }));
         int payload = 4 + json.Length, padded = (payload + 3) & ~3;
@@ -25,9 +25,10 @@ internal static class LauncherTests {
             GameSession.ValidateEngine(engine,BuildInfo.Modes[0]); config.Engines.Add(engine);
             config.Profiles.Add(new GameProfile { Id=Guid.NewGuid().ToString("N"), Name="测试游戏", Directory="game", EngineId=engine.Id }); config.SelectedId=config.Profiles[0].Id;
             LauncherStore.Validate(config.Profiles[0],config); LauncherStore.Save(config);
+            Verify(!config.Profiles[0].CustomWindow,"game window size is default");
             var roundtrip = LauncherStore.Load(); Verify(roundtrip.Profiles[0].Name=="测试游戏", "profile round trip");
             var copy=roundtrip.Profiles[0].Copy(); copy.Width=1400; Verify(roundtrip.Profiles[0].Width==1200,"copy isolation");
-            copy.Width=10; bool rejected=false; try { LauncherStore.Validate(copy,roundtrip); } catch(InvalidDataException) { rejected=true; } Verify(rejected,"reject invalid settings");
+            copy.CustomWindow=true; copy.Width=10; bool rejected=false; try { LauncherStore.Validate(copy,roundtrip); } catch(InvalidDataException) { rejected=true; } Verify(rejected,"reject invalid settings");
             config.Profiles.Add(new GameProfile { Id=Guid.NewGuid().ToString("N"), Name="另一个游戏", Directory="game", EngineId=engine.Id });
             using(var form=new LauncherForm(config)) {
                 var name=(TextBox)typeof(LauncherForm).GetField("name",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(form);
@@ -39,6 +40,17 @@ internal static class LauncherTests {
                 list.SelectedIndex=1;
                 Verify(((GameProfile)list.Items[0]).Name=="快速切换前的编辑" && ((GameProfile)list.Items[1]).Name=="另一个游戏","fast selection preserves both profiles");
             }
+            var offers=Downloads.ParseEngines("[{\"tag_name\":\"5.1.0\",\"assets\":{\"links\":[{\"name\":\"ZIP\",\"url\":\"https://example.org/engine.zip\"},{\"name\":\"Cloud\",\"url\":\"https://mega.nz/folder/example\"},{\"name\":\"bad\",\"url\":\"file:///C:/test.zip\"}]}}]");
+            Verify(offers.Count==2 && offers[0].Direct && !offers[1].Direct,"direct and browser downloads");
+            string zip=Path.Combine(test,"engine.zip");
+            System.IO.Compression.ZipFile.CreateFromDirectory(engineDir,zip);
+            string installed=Downloads.InstallZip(zip,Path.Combine(test,"installed"));
+            Verify(File.Exists(Path.Combine(installed,"resources","app.asar")),"ZIP installation and engine detection");
+            bool traversal=false; try {Downloads.SafeEntry(test,"../outside.exe");} catch(IOException){traversal=true;} Verify(traversal,"ZIP traversal rejected");
+            string hostile=Path.Combine(test,"hostile.zip");
+            using(var archive=System.IO.Compression.ZipFile.Open(hostile,System.IO.Compression.ZipArchiveMode.Create)) {archive.CreateEntry("../escaped.txt");}
+            traversal=false;try {Downloads.InstallZip(hostile,Path.Combine(test,"rejected"));}catch(IOException){traversal=true;}
+            Verify(traversal && Directory.GetDirectories(Path.Combine(test,"rejected")).Length==0,"bad ZIP staging cleanup");
             string output=Path.Combine(test,"repacked.asar");
             using(var archive=new EngineArchive(Path.Combine(engineDir,"resources","app.asar"))) archive.Write(output,new Dictionary<string,byte[]> { {"extra.txt",Encoding.UTF8.GetBytes("roundtrip")} });
             using(var archive=new EngineArchive(output)) Verify(Encoding.UTF8.GetString(archive.FileBytes("extra.txt"))=="roundtrip","ASAR writer integrity");
@@ -51,7 +63,8 @@ internal static class LauncherTests {
             string busy=Path.Combine(session,"busy.exe"); File.WriteAllText(busy,"test");
             using(File.Open(busy,FileMode.Open,FileAccess.Read,FileShare.None)) Verify(!SessionTools.Cleanup(session) && SessionTools.Owned(session),"locked payload retains ownership for next cleanup");
             Verify(SessionTools.Cleanup(session),"remove finished session");
-            File.WriteAllText(report,"PASS clean first run; unrestricted engine registration; standard launch; config persistence; auto-save; ASAR read/write; game routing; profile copy; non-destructive removal; session ownership\n");
+            LauncherPathTests.Run(Path.Combine(test,"path-cases"));
+            File.WriteAllText(report,"PASS clean first run; unrestricted engine registration; standard launch; config persistence; auto-save; ASAR read/write; game routing; profile copy; non-destructive removal; session ownership; original window default; download metadata; ZIP installation and traversal rejection; absolute paths across launcher updates; legacy path migration; unique fingerprint recovery; ambiguous and unknown engines require selection; in-place engine updates; incompatible key mode remains explicit; actionable missing-directory errors; offline About with full embedded license and notices\n");
             return 0;
         } catch(Exception e) { File.WriteAllText(report,e.ToString()); return 1; }
         finally {

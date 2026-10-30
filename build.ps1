@@ -1,8 +1,8 @@
-param([string]$Configuration = 'Release')
+﻿param([string]$Configuration = 'Release')
 $ErrorActionPreference = 'Stop'
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (-not (Test-Path -LiteralPath $compiler)) { throw '.NET Framework 4.x compiler is required.' }
-$out = Join-Path $PSScriptRoot 'dist\Era-Electron-Launcher-v0.3.0-win-x64'
+$out = Join-Path $PSScriptRoot 'dist\Era-Electron-Launcher-v0.4.0-win-x64'
 New-Item -ItemType Directory -Path $out,(Join-Path $out 'patches') -Force | Out-Null
 $native = Join-Path $PSScriptRoot 'native\KeyStateProbe.cs'
 & $compiler /nologo /platform:x64 /target:exe /optimize+ "/out:$out\KeyStateProbe.exe" $native
@@ -25,15 +25,19 @@ internal static class BuildInfo {
 "@
 [IO.File]::WriteAllText((Join-Path $PSScriptRoot 'BuildInfo.cs'), $constants, [Text.UTF8Encoding]::new($false))
 $sources = @(Get-ChildItem -LiteralPath $PSScriptRoot -Filter '*.cs' | ForEach-Object FullName)
-& $compiler /nologo /platform:x64 /target:winexe /optimize+ /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Web.Extensions.dll "/out:$out\StartGame.exe" $sources
+& $compiler /nologo /platform:x64 /target:winexe /optimize+ "/win32icon:$PSScriptRoot\assets\launcher.ico" "/resource:$PSScriptRoot\LICENSE,Launcher.LICENSE" "/resource:$PSScriptRoot\THIRD_PARTY_NOTICES.md,Launcher.NOTICES" /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Web.Extensions.dll /r:System.Net.Http.dll /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll "/out:$out\StartGame.exe" $sources
 if ($LASTEXITCODE -ne 0) { throw 'Launcher build failed' }
-foreach ($file in @('README.md','LICENSE','THIRD_PARTY_NOTICES.md','CHANGELOG.md')) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination (Join-Path $out $file) -Force }
+# Documentation stays in the source tree. Legal text is embedded in About.
+foreach ($file in @('README.md','LICENSE','THIRD_PARTY_NOTICES.md','CHANGELOG.md')) {
+    $oldDocument=Join-Path $out $file
+    if(Test-Path -LiteralPath $oldDocument) {Remove-Item -LiteralPath $oldDocument -Force}
+}
 $report = Join-Path $PSScriptRoot 'dist\self-test.txt'
 $test = Start-Process -FilePath (Join-Path $out 'StartGame.exe') -ArgumentList @('--self-test', $report) -WindowStyle Hidden -PassThru -Wait
 if ($test.ExitCode -ne 0) { Get-Content -LiteralPath $report; throw 'Launcher checks failed' }
 Get-Content -LiteralPath $report
-$zip = Join-Path $PSScriptRoot 'dist\Era-Electron-Launcher-v0.3.0-win-x64.zip'
+$zip = Join-Path $PSScriptRoot 'dist\Era-Electron-Launcher-v0.4.0-win-x64.zip'
 Compress-Archive -Path (Join-Path $out '*') -DestinationPath $zip -Force
 $hash = (Get-FileHash -LiteralPath $zip).Hash.ToLowerInvariant()
-[IO.File]::WriteAllText((Join-Path $PSScriptRoot 'dist\SHA256SUMS.txt'), "$hash  Era-Electron-Launcher-v0.3.0-win-x64.zip`n", [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText((Join-Path $PSScriptRoot 'dist\SHA256SUMS.txt'), "$hash  Era-Electron-Launcher-v0.4.0-win-x64.zip`n", [Text.UTF8Encoding]::new($false))
 Write-Output "Built: $zip"

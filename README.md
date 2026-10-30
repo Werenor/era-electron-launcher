@@ -22,6 +22,11 @@
 
 ## 数据与退出清理
 
+- 引擎与游戏目录保存为绝对路径，记录旧路径基准及最近使用的启动器目录；换文件夹运行新版启动器仍沿用原登记。
+- 引擎目录失效时，只在已知目录及其有限相邻位置检查；仅在找到唯一一份归档SHA-256相同的引擎时自动恢复。多个匹配、缺少指纹或引擎版本已变化时，请使用“重新定位引擎”，保留原有游戏绑定。不会扫描整个磁盘或擅自选择另一版本。
+- 游戏目录失效时，启动前提示重新选择原游戏根目录；不会猜选其他游戏或复制存档。实时按键模式不兼容新引擎时明确提示，不自动改成标准输入。
+- 更新启动器前先关闭所有启动器窗口，再完整解压同一版本发布包。不要只替换StartGame.exe或混用其他构建的KeyStateProbe.exe；组件校验失败时会注明具体文件。
+
 - 配置：当前用户 LocalAppData/PortArcadeLauncher/launcher.json，保存时保留备份。该历史目录名用于兼容早期版本。
 - 每个启动配置的引擎用户数据保存在 `instances/<ID>/profile`。
 - 日志保存在 `logs`，包括启动记录和引擎日志快照。
@@ -39,10 +44,10 @@ keystate 采用 Electron 输入事件与 Windows 原生松键校验，修复真�
 .uild.ps1
 ```
 
-脚本编译启动器和原生组件，运行检查，生成 `dist/Era-Electron-Launcher-v0.3.0-win-x64.zip` 与 SHA256SUMS.txt。构建和运行均无需下载原版引擎，无 Python 依赖。
+脚本编译启动器和原生组件，运行检查，生成 `dist/Era-Electron-Launcher-v0.4.0-win-x64.zip` 与 SHA256SUMS.txt。构建和运行均无需下载原版引擎，无 Python 依赖。
 
 ```powershell
-.\dist\Era-Electron-Launcher-v0.3.0-win-x64\StartGame.exe --self-test C:\Temp\launcher-checks.txt
+.\dist\Era-Electron-Launcher-v0.4.0-win-x64\StartGame.exe --self-test C:\Temp\launcher-checks.txt
 ```
 
 源码包括图形界面、配置存储、进程生命周期、ASAR 适配器、keystate 与原生组件。`build.ps1` 从源码生成组件校验值。
@@ -51,4 +56,15 @@ keystate 采用 Electron 输入事件与 Windows 原生松键校验，修复真�
 
 本项目不是官方 Era-Electron 发行版。官方引擎与作者：[UmaERA / Era-Electron](https://gitgud.io/umaera/engine/era-electron)，[官方发布页](https://gitgud.io/umaera/engine/era-electron/-/releases)。
 
-GPL-2.0，参见 LICENSE 和 THIRD_PARTY_NOTICES.md。发布包不包含私人游戏目录、存档、令牌、开发机配置或原版引擎二进制。
+GPL-2.0，参见源码中的 LICENSE 和 THIRD_PARTY_NOTICES.md。启动器“关于”页内置完整许可证及第三方声明，离线可读；发布包不再附带 README、更新日志及独立法律文档。发布包不包含私人游戏目录、存档、令牌、开发机配置或原版引擎二进制。
+
+
+## v0.4.0
+
+窗口默认使用游戏自己的尺寸、字号和最大化配置。勾选“自定义窗口”才应用启动器参数；取消后恢复游戏原配置，保留自定义数值供以后使用。旧配置未指定该选项时同样采用游戏原始窗口。自定义窗口仍需要已适配的引擎。
+
+“下载引擎”读取官方发布列表；HTTPS ZIP 直链可直接下载、解压、验证并登记，网盘链接转到浏览器，下载 Windows ZIP 后点击“安装下载的 ZIP”。安装目录由用户选择，不覆盖已有引擎。当前官方5.1.0下载链接为MEGA网盘。ZIP会检查路径越界、符号链接、条目和解压大小限制，失败清理安装暂存。
+
+“检查启动器更新”查询GitHub正式Release，发现新版后显示版本和发布说明，可打开发布页下载。网络异常、限流会显示错误。不自动覆盖运行中的启动器。游戏下载本版未实现。
+
+安装成功后自动清理使用的 ZIP 安装包和解压暂存（包括手动选择的 ZIP）。安装失败保留手动选择的原安装包以便重试，直链下载的未完成文件会清理。安装进行中暂不允许退出启动器，以便完成安装和清理。
