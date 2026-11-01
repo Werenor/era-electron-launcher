@@ -21,7 +21,7 @@ internal static class Downloads {
     static HttpClient Client() {
         ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
         var client=new HttpClient {Timeout=TimeSpan.FromSeconds(30)};
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("Era-Electron-Launcher/0.4.0");return client;
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Era-Electron-Launcher/0.4.1");return client;
     }
     static Dictionary<string,object> Dict(object value) {return (Dictionary<string,object>)value;}
     static string Str(Dictionary<string,object> d,string key) {return d.ContainsKey(key)?Convert.ToString(d[key]):"";}

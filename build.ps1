@@ -2,7 +2,7 @@
 $ErrorActionPreference = 'Stop'
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (-not (Test-Path -LiteralPath $compiler)) { throw '.NET Framework 4.x compiler is required.' }
-$out = Join-Path $PSScriptRoot 'dist\Era-Electron-Launcher-v0.4.0-win-x64'
+$out = Join-Path $PSScriptRoot 'dist\Era-Electron-Launcher-v0.4.1-win-x64'
 New-Item -ItemType Directory -Path $out,(Join-Path $out 'patches') -Force | Out-Null
 $native = Join-Path $PSScriptRoot 'native\KeyStateProbe.cs'
 & $compiler /nologo /platform:x64 /target:exe /optimize+ "/out:$out\KeyStateProbe.exe" $native
@@ -36,8 +36,8 @@ $report = Join-Path $PSScriptRoot 'dist\self-test.txt'
 $test = Start-Process -FilePath (Join-Path $out 'StartGame.exe') -ArgumentList @('--self-test', $report) -WindowStyle Hidden -PassThru -Wait
 if ($test.ExitCode -ne 0) { Get-Content -LiteralPath $report; throw 'Launcher checks failed' }
 Get-Content -LiteralPath $report
-$zip = Join-Path $PSScriptRoot 'dist\Era-Electron-Launcher-v0.4.0-win-x64.zip'
+$zip = Join-Path $PSScriptRoot 'dist\Era-Electron-Launcher-v0.4.1-win-x64.zip'
 Compress-Archive -Path (Join-Path $out '*') -DestinationPath $zip -Force
 $hash = (Get-FileHash -LiteralPath $zip).Hash.ToLowerInvariant()
-[IO.File]::WriteAllText((Join-Path $PSScriptRoot 'dist\SHA256SUMS.txt'), "$hash  Era-Electron-Launcher-v0.4.0-win-x64.zip`n", [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText((Join-Path $PSScriptRoot 'dist\SHA256SUMS.txt'), "$hash  Era-Electron-Launcher-v0.4.1-win-x64.zip`n", [Text.UTF8Encoding]::new($false))
 Write-Output "Built: $zip"

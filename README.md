@@ -44,10 +44,10 @@ keystate 采用 Electron 输入事件与 Windows 原生松键校验，修复真�
 .uild.ps1
 ```
 
-脚本编译启动器和原生组件，运行检查，生成 `dist/Era-Electron-Launcher-v0.4.0-win-x64.zip` 与 SHA256SUMS.txt。构建和运行均无需下载原版引擎，无 Python 依赖。
+脚本编译启动器和原生组件，运行检查，生成 `dist/Era-Electron-Launcher-v0.4.1-win-x64.zip` 与 SHA256SUMS.txt。构建和运行均无需下载原版引擎，无 Python 依赖。
 
 ```powershell
-.\dist\Era-Electron-Launcher-v0.4.0-win-x64\StartGame.exe --self-test C:\Temp\launcher-checks.txt
+.\dist\Era-Electron-Launcher-v0.4.1-win-x64\StartGame.exe --self-test C:\Temp\launcher-checks.txt
 ```
 
 源码包括图形界面、配置存储、进程生命周期、ASAR 适配器、keystate 与原生组件。`build.ps1` 从源码生成组件校验值。
@@ -59,7 +59,7 @@ keystate 采用 Electron 输入事件与 Windows 原生松键校验，修复真�
 GPL-2.0，参见源码中的 LICENSE 和 THIRD_PARTY_NOTICES.md。启动器“关于”页内置完整许可证及第三方声明，离线可读；发布包不再附带 README、更新日志及独立法律文档。发布包不包含私人游戏目录、存档、令牌、开发机配置或原版引擎二进制。
 
 
-## v0.4.0
+## v0.4.1
 
 窗口默认使用游戏自己的尺寸、字号和最大化配置。勾选“自定义窗口”才应用启动器参数；取消后恢复游戏原配置，保留自定义数值供以后使用。旧配置未指定该选项时同样采用游戏原始窗口。自定义窗口仍需要已适配的引擎。
 

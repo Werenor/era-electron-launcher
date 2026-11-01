@@ -63,8 +63,17 @@ internal static class LauncherTests {
             string busy=Path.Combine(session,"busy.exe"); File.WriteAllText(busy,"test");
             using(File.Open(busy,FileMode.Open,FileAccess.Read,FileShare.None)) Verify(!SessionTools.Cleanup(session) && SessionTools.Owned(session),"locked payload retains ownership for next cleanup");
             Verify(SessionTools.Cleanup(session),"remove finished session");
+            var cleanupConfig=new LauncherConfig();
+            var absent=new EngineInstall {Id="missing-test",Name="missing",Directory=Path.Combine(test,"absent")};
+            cleanupConfig.Engines.Add(engine);cleanupConfig.Engines.Add(absent);
+            cleanupConfig.Profiles.Add(new GameProfile {Id="cleanup-game",Name="kept",Directory=Path.Combine(test,"game"),EngineId=absent.Id,ModeId="keystate"});
+            Verify(EngineManagement.Missing(absent) && !EngineManagement.Missing(engine),"only missing directories selected");
+            EngineManagement.Remove(cleanupConfig,new[]{absent});
+            Verify(cleanupConfig.Engines.Count==1 && cleanupConfig.Profiles[0].EngineId==null && cleanupConfig.Profiles[0].ModeId=="keystate" && Directory.Exists(engineDir),"remove preserves game, mode and engine files");
+            cleanupConfig.Profiles[0].Directory=engineDir;
+            bool guarded=false;try {EngineManagement.ValidateDelete(cleanupConfig,engine);}catch(IOException){guarded=true;}Verify(guarded,"protect overlapping game directories");
             LauncherPathTests.Run(Path.Combine(test,"path-cases"));
-            File.WriteAllText(report,"PASS clean first run; unrestricted engine registration; standard launch; config persistence; auto-save; ASAR read/write; game routing; profile copy; non-destructive removal; session ownership; original window default; download metadata; ZIP installation and traversal rejection; absolute paths across launcher updates; legacy path migration; unique fingerprint recovery; ambiguous and unknown engines require selection; in-place engine updates; incompatible key mode remains explicit; actionable missing-directory errors; offline About with full embedded license and notices\n");
+            File.WriteAllText(report,"PASS clean first run; unrestricted engine registration; standard launch; config persistence; auto-save; ASAR read/write; game routing; profile copy; non-destructive removal; session ownership; original window default; download metadata; ZIP installation and traversal rejection; absolute paths across launcher updates; legacy path migration; unique fingerprint recovery; ambiguous and unknown engines require selection; in-place engine updates; incompatible key mode remains explicit; actionable missing-directory errors; offline About with full embedded license and notices; missing engine cleanup; removal preserves game and mode; overlapping directory protection\n");
             return 0;
         } catch(Exception e) { File.WriteAllText(report,e.ToString()); return 1; }
         finally {

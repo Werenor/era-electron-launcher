@@ -27,7 +27,7 @@ internal sealed class LauncherForm : Form {
     bool loading, dirty, closeAfterRun, installing;
     internal LauncherForm(LauncherConfig data) {
         config = data; Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
-        Text = "Era-Electron启动器 v0.4.0"; ClientSize = new Size(1100, 730); MinimumSize = new Size(980, 690);
+        Text = "Era-Electron启动器 v0.4.1"; ClientSize = new Size(1100, 730); MinimumSize = new Size(980, 690);
         StartPosition = FormStartPosition.CenterScreen; Font = new Font("Microsoft YaHei UI", 9.5f);
         BackColor = Color.FromArgb(244, 246, 250); AutoScaleMode = AutoScaleMode.Font;
         BuildSidebar(); BuildContent(); RefreshEngines(); RefreshProfiles(config.SelectedId);
@@ -128,7 +128,7 @@ internal sealed class LauncherForm : Form {
     }
     void BuildAbout() {
         about.Padding=new Padding(16);
-        var title=new Label {Dock=DockStyle.Top,Height=76,Text="Era-Electron 启动器 v0.4.0\r\n独立第三方启动器 · GPL-2.0 许可证",Font=new Font(Font.FontFamily,12),Padding=new Padding(0,5,0,0)};
+        var title=new Label {Dock=DockStyle.Top,Height=76,Text="Era-Electron 启动器 v0.4.1\r\n独立第三方启动器 · GPL-2.0 许可证",Font=new Font(Font.FontFamily,12),Padding=new Padding(0,5,0,0)};
         var documents=new TabControl {Dock=DockStyle.Fill};
         foreach(var entry in new[] {new[]{"许可证","Launcher.LICENSE"},new[]{"第三方声明","Launcher.NOTICES"}}) {
             var page=new TabPage(entry[0]) {Padding=new Padding(10)};
@@ -142,9 +142,10 @@ internal sealed class LauncherForm : Form {
     void BuildEngines() {
         enginePage.Padding = new Padding(12); engineList.Dock = DockStyle.Fill; engineList.View = View.Details; engineList.FullRowSelect = true; engineList.MultiSelect = false;
         engineList.Columns.Add("引擎安装", 180); engineList.Columns.Add("版本", 100); engineList.Columns.Add("目录", 380);
-        var actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 85, Padding = new Padding(0, 7, 0, 0) };
+        var actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 125, Padding = new Padding(0, 7, 0, 0) };
         actions.Controls.Add(Button("下载引擎", DownloadEngine)); actions.Controls.Add(Button("安装下载的 ZIP", InstallEngineZip)); actions.Controls.Add(Button("登记引擎目录", AddEngine)); actions.Controls.Add(Button("校验引擎", CheckEngine)); actions.Controls.Add(Button("打开目录", (s, e) => { if (engineList.SelectedItems.Count > 0) OpenFolder(LauncherPaths.Resolve(((EngineInstall)engineList.SelectedItems[0].Tag).Directory)); }));
         actions.Controls.Add(Button("重新定位引擎", RelocateEngine));
+        actions.Controls.Add(Button("从目录中移除", DeleteEngine)); actions.Controls.Add(Button("清理失效目录", CleanMissingEngines));
         actions.Controls.Add(Button("引擎官方发布页", (s,e) => Process.Start(new ProcessStartInfo(EngineCatalog.OfficialUrl) { UseShellExecute=true })));
         enginePage.Controls.Add(engineList); enginePage.Controls.Add(actions);
     }
@@ -216,6 +217,41 @@ internal sealed class LauncherForm : Form {
             item.SubItems.Add(label); item.SubItems.Add(EnginePaths.Display(install.Directory)); engineList.Items.Add(item); }
         if(selected!=null) engines.SelectedItem=config.Engines.Find(e=>e.Id==selected.Id);
         loading = false;
+    }
+    void RefreshAfterEngineRemoval() {
+        string selected=current==null?config.SelectedId:current.Id;
+        current=null;dirty=false;autoSave.Stop();RefreshEngines();RefreshProfiles(selected);
+    }
+    bool CanManageEngines() {
+        if(session!=null || installing){Info("请等待游戏和引擎安装结束。");return false;}
+        return !dirty || SaveEditor(true);
+    }
+    void DeleteEngine(object sender, EventArgs e) {
+        if(!CanManageEngines())return;
+        if(engineList.SelectedItems.Count==0){Info("请先选中一个引擎。");return;}
+        var engine=(EngineInstall)engineList.SelectedItems[0].Tag;
+        int count=config.Profiles.Count(p=>p.EngineId==engine.Id);
+        using(var dialog=new Form {Text="从目录中移除",ClientSize=new Size(560,210),StartPosition=FormStartPosition.CenterParent,FormBorderStyle=FormBorderStyle.FixedDialog,MaximizeBox=false,MinimizeBox=false}) {
+            var text=new Label {Left=20,Top=16,Width=520,Height=95,AutoEllipsis=true,Text=engine.Name+"\n"+EnginePaths.Display(engine.Directory)+"\n\n"+count+" 个游戏将取消引擎绑定，游戏和存档保留。"};
+            var disk=new CheckBox {Left=20,Top=115,Width=520,Text="同时删除引擎文件（移入回收站）"};
+            var ok=new Button {Text="移除",Left=330,Top=163,Width=95,DialogResult=DialogResult.OK};
+            var cancel=new Button {Text="取消",Left=435,Top=163,Width=95,DialogResult=DialogResult.Cancel};
+            dialog.Controls.AddRange(new Control[]{text,disk,ok,cancel});dialog.AcceptButton=ok;dialog.CancelButton=cancel;
+            if(dialog.ShowDialog(this)!=DialogResult.OK)return;
+            try {
+                if(disk.Checked)EngineManagement.Recycle(config,engine,Handle);
+                EngineManagement.Remove(config,new[]{engine});RefreshAfterEngineRemoval();status.Text="已从目录中移除引擎";
+            }catch(Exception error){Error(error.Message);}
+        }
+    }
+    void CleanMissingEngines(object sender, EventArgs e) {
+        if(!CanManageEngines())return;
+        var missing=config.Engines.Where(EngineManagement.Missing).ToList();
+        if(missing.Count==0){Info("没有失效的引擎目录。");return;}
+        string list=String.Join("\n",missing.Take(12).Select(x=>x.Name+" — "+EnginePaths.Display(x.Directory)));
+        if(missing.Count>12)list+="\n…";
+        if(MessageBox.Show(this,"移除以下 "+missing.Count+" 条引擎登记？\n\n"+list+"\n\n相关游戏保留并取消绑定，不删除磁盘文件。","清理失效目录",MessageBoxButtons.YesNo,MessageBoxIcon.Question)!=DialogResult.Yes)return;
+        try {EngineManagement.Remove(config,missing);RefreshAfterEngineRemoval();status.Text="已清理 "+missing.Count+" 条失效登记";}catch(Exception error){Error(error.Message);}
     }
     bool PickEngineLocation(EngineInstall install) {
         using(var dialog=new FolderBrowserDialog {Description="重新选择该引擎目录；保留现有游戏绑定"}) {
@@ -298,7 +334,7 @@ internal sealed class LauncherForm : Form {
         try {
             var release=await Downloads.LauncherLatest();
             Version latest; if(!Version.TryParse(release.Tag.TrimStart('v','V'),out latest))throw new IOException("发布版本号无法识别。");
-            if(latest<=new Version("0.4.0")) {Info("当前已是最新版本（v0.4.0）。");return;}
+            if(latest<=new Version("0.4.1")) {Info("当前已是最新版本（v0.4.1）。");return;}
             if(MessageBox.Show(this,"发现新版 "+release.Tag+"\n\n"+release.Notes+"\n\n打开发布页下载？","启动器更新",MessageBoxButtons.YesNo,MessageBoxIcon.Information)==DialogResult.Yes)
                 Process.Start(new ProcessStartInfo(release.Url){UseShellExecute=true});
         } catch(Exception error) {Error("更新检查失败："+error.Message);}
