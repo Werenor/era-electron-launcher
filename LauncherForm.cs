@@ -31,7 +31,7 @@ internal sealed class LauncherForm : Form {
     bool loading, dirty, closeAfterRun, installing;
     internal LauncherForm(LauncherConfig data) {
         config = data; Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
-        Text = "Era-Electron启动器 v0.5.0"; ClientSize = new Size(1100, 730); MinimumSize = new Size(980, 690);
+        Text = "Era-Electron启动器 v0.6.0"; ClientSize = new Size(1100, 730); MinimumSize = new Size(980, 690);
         StartPosition = FormStartPosition.CenterScreen; Font = new Font("Microsoft YaHei UI", 9.5f);
         BackColor = Color.FromArgb(244, 246, 250); AutoScaleMode = AutoScaleMode.Font;
         BuildSidebar(); BuildContent(); RefreshEngines(); RefreshProfiles(config.SelectedId);
@@ -203,7 +203,7 @@ internal sealed class LauncherForm : Form {
     }
     void BuildAbout() {
         about.Padding=new Padding(16);
-        var title=new Label {Dock=DockStyle.Top,Height=76,Text="Era-Electron 启动器 v0.5.0\r\n独立第三方启动器 · GPL-2.0 许可证",Font=new Font(Font.FontFamily,12),Padding=new Padding(0,5,0,0)};
+        var title=new Label {Dock=DockStyle.Top,Height=76,Text="Era-Electron 启动器 v0.6.0\r\n独立第三方启动器 · GPL-2.0 许可证",Font=new Font(Font.FontFamily,12),Padding=new Padding(0,5,0,0)};
         var documents=new TabControl {Dock=DockStyle.Fill};
         foreach(var entry in new[] {new[]{"许可证","Launcher.LICENSE"},new[]{"第三方声明","Launcher.NOTICES"}}) {
             var page=new TabPage(entry[0]) {Padding=new Padding(10)};
@@ -407,11 +407,11 @@ internal sealed class LauncherForm : Form {
         string directory=LauncherPaths.Resolve(current.Directory),title=current.Name;
         try {
             var result=await GameUpdates.Check(directory);
-            string message="当前版本："+result.Local.Version+"\n发布版本："+result.Version;
-            if(result.Comparison==0){Info(title+"\n"+message+"\n当前已是最新正式版本。");return;}
-            if(result.Comparison<0){Info(title+"\n"+message+"\n本地版本比当前正式发布版本更新。");return;}
+            string message="当前版本："+result.Local.Version+"\n分支版本："+result.Version;
+            if(result.Comparison==0){Info(title+"\n"+message+"\n当前版本与发布分支一致。");return;}
+            if(result.Comparison<0){Info(title+"\n"+message+"\n本地版本比发布分支更新。");return;}
             string heading=result.Comparison.HasValue?"发现游戏更新":"发现不同版本，无法自动判断版本先后";
-            if(MessageBox.Show(this,title+"\n"+message+"\n\n"+result.Notes+"\n\n打开发布页？此次检查不会改动游戏、存档或设置。","游戏更新："+heading,MessageBoxButtons.YesNo,MessageBoxIcon.Information)==DialogResult.Yes)
+            if(MessageBox.Show(this,title+"\n"+message+"\n\n"+result.Notes+"\n\n下载此提交的源码 ZIP？只会打开下载链接，不覆盖游戏、存档或设置。","游戏更新："+heading,MessageBoxButtons.YesNo,MessageBoxIcon.Information)==DialogResult.Yes)
                 Process.Start(new ProcessStartInfo(result.Url){UseShellExecute=true});
         }catch(Exception error){Error("游戏更新检查失败："+error.Message);}
         finally {if(button!=null&&!button.IsDisposed)button.Enabled=true;}
@@ -421,7 +421,7 @@ internal sealed class LauncherForm : Form {
         try {
             var release=await Downloads.LauncherLatest();
             Version latest; if(!Version.TryParse(release.Tag.TrimStart('v','V'),out latest))throw new IOException("发布版本号无法识别。");
-            if(latest<=new Version("0.5.0")) {Info("当前已是最新版本（v0.5.0）。");return;}
+            if(latest<=new Version("0.6.0")) {Info("当前已是最新版本（v0.6.0）。");return;}
             if(MessageBox.Show(this,"发现新版 "+release.Tag+"\n\n"+release.Notes+"\n\n打开发布页下载？","启动器更新",MessageBoxButtons.YesNo,MessageBoxIcon.Information)==DialogResult.Yes)
                 Process.Start(new ProcessStartInfo(release.Url){UseShellExecute=true});
         } catch(Exception error) {Error("更新检查失败："+error.Message);}

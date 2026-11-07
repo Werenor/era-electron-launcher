@@ -83,4 +83,21 @@ source/repository/id 为插件身份。缺失时弹窗选择下载、兼容运�
 
 ## 游戏仓库与更新声明
 
-游戏根目录 ere.launcher.json 可增加 game 对象，repository 为完整 HTTPS GitHub/GitGud 仓库地址，version 为当前游戏版本（建议与 Release tag 对应）。例如 game: { repository: https://github.com/作者/仓库, version: 0.8.0 }。此字段可与 plugins 并存；只有 game 时无需声明插件。左侧优先显示声明版本。检查游戏更新只读最新正式 Release；无法比较的版本仅显示差异，不猜测新旧。检查不会下载、解压、覆盖、搬移游戏文件，不读写 sav、存档或游戏设置；确认后仅在浏览器打开发布页。暂无 Release、私有仓库、限流及网络错误均显示检查失败，不当作已是最新。当前不支持游戏原地覆盖更新。
+游戏根目录 `ere.launcher.json`：
+
+```json
+{
+  "game": {
+    "repository": "https://gitgud.io/ereal/game",
+    "version": "0.8.0",
+    "branch": "main"
+  },
+  "plugins": []
+}
+```
+
+`branch` 为发布分支，省略时默认 `main`。作者在发布分支更新声明版本并推送代码即可，无需创建游戏 Release。支持 GitHub、GitGud。先解析分支当前提交 SHA，再从该 SHA 读取声明并生成同一 SHA 的源码 ZIP 链接。远程声明必须属于同一个仓库。只比较声明版本，分支提交变化但版本未变时不提示新版。
+
+左侧优先显示声明版本。无法比较的版本仅显示差异，不猜测先后。检查是只读操作，不下载、解压、覆盖或搬移游戏、sav、存档或玩家设置；确认后仅在浏览器打开固定 SHA 下载链接。网络错误、缺失分支或声明显示检查失败，不冒充已是最新。当前不执行游戏原地覆盖更新。
+
+启动器自身和独立插件仍使用各自的 GitHub Releases。

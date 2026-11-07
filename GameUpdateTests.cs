@@ -14,11 +14,27 @@ internal static class GameUpdateTests {
   Verify(GameUpdates.Compare("v1.2.0","1.1.9")==1 && GameUpdates.Compare("v1.0.0","1.0.0")==0,"release version comparison");
   Verify(GameUpdates.Compare("1.0.0","1.0.0-rc.2")==1 && GameUpdates.Compare("1.0.0-rc.10","1.0.0-rc.2")==1,"prerelease comparison");
   Verify(GameUpdates.Compare("nightly","1.0.0")==null,"unknown versions are not guessed");
-  Func<string,Task<string>> fetch=url=>Task.FromResult("{\"tag_name\":\"v1.1.0\",\"html_url\":\"https://github.com/Werenor/game-update-fixture/releases/tag/v1.1.0\",\"body\":\"Update notes\"}");
-  var result=GameUpdates.Check(root,fetch).GetAwaiter().GetResult();Verify(result.Comparison==1 && result.Version=="v1.1.0","readonly release check");
-  bool rejected=false;try {GameUpdates.Check(root,url=>Task.FromResult("{\"tag_name\":\"v2.0.0\",\"html_url\":\"https://example.org/download\"}")).GetAwaiter().GetResult();}catch(IOException){rejected=true;}Verify(rejected,"unrelated release links rejected");
-  File.WriteAllText(declaration,"{\"game\":{\"repository\":\"https://gitgud.io/group/game\",\"version\":\"1.0.0\"}}");
-  result=GameUpdates.Check(root,url=>Task.FromResult(url.Contains("search=")?"[{\"id\":123,\"path_with_namespace\":\"group/game\"}]":"{\"tag_name\":\"1.2.0\",\"_links\":{\"self\":\"https://gitgud.io/group/game/-/releases/1.2.0\"}}")).GetAwaiter().GetResult();Verify(result.Comparison==1,"GitGud project identity and release check");
+  string sha=new string('a',40);
+  string remote="{\"game\":{\"repository\":\"https://github.com/Werenor/game-update-fixture\",\"version\":\"1.1.0\"}}";
+  Func<string,Task<string>> fetch=url=>{
+   Verify(!url.Contains("releases"),"game checks must not require Releases");
+   if(url.Contains("/commits/"))return Task.FromResult("{\"sha\":\""+sha+"\"}");
+   Verify(url.EndsWith("?ref="+sha),"read manifest pinned to resolved commit");
+   return Task.FromResult("{\"encoding\":\"base64\",\"content\":\""+Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(remote))+"\"}");
+  };
+  var result=GameUpdates.Check(root,fetch).GetAwaiter().GetResult();Verify(result.Comparison==1 && result.Version=="1.1.0" && result.Url.Contains(sha),"readonly commit-pinned branch check");
+  Verify(SessionTools.Sha(declaration)==manifestHash,"check does not replace local declaration");
+  bool rejected=false;try {GameUpdates.Check(root,url=>Task.FromResult("{\"sha\":\"invalid\"}")).GetAwaiter().GetResult();}catch(IOException){rejected=true;}Verify(rejected,"invalid commits rejected");
+  remote=remote.Replace("Werenor/game-update-fixture","somebody/other-game");
+  rejected=false;try {GameUpdates.Check(root,fetch).GetAwaiter().GetResult();}catch(IOException){rejected=true;}Verify(rejected,"remote repository mismatch rejected");
+  File.WriteAllText(declaration,"{\"game\":{\"repository\":\"https://gitgud.io/group/game\",\"version\":\"1.0.0\",\"branch\":\"release/stable\"}}");
+  result=GameUpdates.Check(root,url=>{
+   Verify(!url.Contains("releases"),"GitGud does not require Releases");
+   if(url.Contains("search="))return Task.FromResult("[{\"id\":123,\"path_with_namespace\":\"group/game\"}]");
+   if(url.Contains("/commits?")) {Verify(url.Contains("release%2Fstable"),"branch name encoded");return Task.FromResult("[{\"id\":\""+sha+"\"}]");}
+   Verify(url.EndsWith("?ref="+sha),"GitGud manifest pinned to SHA");
+   return Task.FromResult("{\"game\":{\"repository\":\"https://gitgud.io/group/game\",\"version\":\"1.2.0\"}}");
+  }).GetAwaiter().GetResult();Verify(result.Comparison==1 && result.Url.EndsWith("?sha="+sha),"GitGud branch and archive use identical commit");
   Verify(SessionTools.Sha(save)==saveHash && SessionTools.Sha(config)==configHash,"update checks preserve player saves and settings");
  }
 }

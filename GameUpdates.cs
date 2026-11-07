@@ -9,13 +9,16 @@ using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 
 internal static class GameUpdates {
- internal sealed class Declaration {internal string Repository,Version,Host,Project;}
- internal sealed class Result {internal Declaration Local;internal string Version,Url,Notes;internal int? Comparison;}
+ internal sealed class Declaration {internal string Repository,Version,Host,Project,Branch;}
+ internal sealed class Result {internal Declaration Local;internal string Version,Url,Notes,Commit;internal int? Comparison;}
  static Dictionary<string,object> Object(object value){return (Dictionary<string,object>)value;}
  static string Text(Dictionary<string,object> data,string key){return data.ContainsKey(key)?Convert.ToString(data[key]):"";}
  internal static Declaration Read(string directory) {
   string path=Path.Combine(directory,"ere.launcher.json");if(!File.Exists(path))return null;
-  var data=Object(new JavaScriptSerializer().DeserializeObject(File.ReadAllText(path)));
+  return Parse(File.ReadAllText(path));
+ }
+ static Declaration Parse(string json) {
+  var data=Object(new JavaScriptSerializer().DeserializeObject(json));
   if(!data.ContainsKey("game"))return null;
   var game=Object(data["game"]);string repository=Text(game,"repository"),version=Text(game,"version");
   Uri uri;
@@ -23,7 +26,9 @@ internal static class GameUpdates {
   string project=uri.AbsolutePath.Trim('/');if(project.EndsWith(".git"))project=project.Substring(0,project.Length-4);
   if((uri.Host!="github.com"&&uri.Host!="gitgud.io")||!Regex.IsMatch(project,@"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+$")||project.Split('/').Any(x=>x=="."||x=="..")||(uri.Host=="github.com"&&project.Split('/').Length!=2))throw new IOException("游戏仓库地址仅支持 GitHub 和 GitGud 项目。");
   if(String.IsNullOrWhiteSpace(version))throw new IOException("游戏声明缺少当前版本号。");
-  return new Declaration {Repository="https://"+uri.Host+"/"+project,Host=uri.Host,Project=project,Version=version};
+  string branch=Text(game,"branch");if(String.IsNullOrWhiteSpace(branch))branch="main";
+  if(branch.Length>200||branch.Any(Char.IsControl)||branch.StartsWith("-")||branch.Contains(".."))throw new IOException("游戏发布分支无效。");
+  return new Declaration {Branch=branch,Repository="https://"+uri.Host+"/"+project,Host=uri.Host,Project=project,Version=version};
  }
  internal static int? Compare(string remote,string local) {
   var regex=new Regex(@"^[vV]?(\d+(?:\.\d+){1,3})(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$");
@@ -51,10 +56,16 @@ internal static class GameUpdates {
     return await Check(directory,endpoint=>client.GetStringAsync(endpoint));
    }
   }
-  string url;
-  if(game.Host=="github.com")url="https://api.github.com/repos/"+game.Project+"/releases/latest";
-  else {
-   // Numeric IDs avoid .NET Framework normalizing encoded namespace slashes.
+  string sha,download,remoteJson,message="";
+  if(game.Host=="github.com") {
+   string api="https://api.github.com/repos/"+game.Project;
+   var commit=Object(new JavaScriptSerializer().DeserializeObject(await fetch(api+"/commits/"+Uri.EscapeDataString(game.Branch))));
+   sha=Text(commit,"sha");ValidateCommit(sha);
+   var file=Object(new JavaScriptSerializer().DeserializeObject(await fetch(api+"/contents/ere.launcher.json?ref="+sha)));
+   if(Text(file,"encoding")!="base64")throw new IOException("远程游戏声明格式不支持。");
+   remoteJson=System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(Text(file,"content")));
+   download=game.Repository+"/archive/"+sha+".zip";
+  } else {
    string id=null,name=game.Project.Split('/').Last();
    for(int page=1;page<=3&&id==null;page++) {
     var projects=(object[])new JavaScriptSerializer().DeserializeObject(await fetch("https://gitgud.io/api/v4/projects?search="+Uri.EscapeDataString(name)+"&simple=true&per_page=100&page="+page));
@@ -62,12 +73,16 @@ internal static class GameUpdates {
     if(projects.Length<100)break;
    }
    if(id==null)throw new IOException("未找到游戏的 GitGud 项目。");
-   url="https://gitgud.io/api/v4/projects/"+id+"/releases/permalink/latest";
+   string api="https://gitgud.io/api/v4/projects/"+id;
+   var commits=(object[])new JavaScriptSerializer().DeserializeObject(await fetch(api+"/repository/commits?ref_name="+Uri.EscapeDataString(game.Branch)+"&per_page=1"));
+   if(commits.Length==0)throw new IOException("发布分支没有可用提交。");
+   var commit=Object(commits[0]);sha=Text(commit,"id");ValidateCommit(sha);message=Text(commit,"title");
+   remoteJson=await fetch(api+"/repository/files/ere.launcher.json/raw?ref="+sha);
+   download=api+"/repository/archive.zip?sha="+sha;
   }
-  var release=Object(new JavaScriptSerializer().DeserializeObject(await fetch(url)));
-  string version=Text(release,"tag_name"),link=game.Host=="github.com"?Text(release,"html_url"):Text(Object(release["_links"]),"self");
-  if(String.IsNullOrEmpty(version)||!link.StartsWith(game.Repository+"/",StringComparison.OrdinalIgnoreCase))throw new IOException("发布信息或发布页地址不属于声明的游戏仓库。");
-  string notes=Text(release,game.Host=="github.com"?"body":"description");if(notes.Length>1400)notes=notes.Substring(0,1400)+"…";
-  return new Result {Local=game,Version=version,Url=link,Notes=notes,Comparison=Compare(version,game.Version)};
+  var remote=Parse(remoteJson.TrimStart('\uFEFF'));
+  if(remote==null || !String.Equals(remote.Repository,game.Repository,StringComparison.OrdinalIgnoreCase))throw new IOException("远程声明的仓库身份与本地不一致。");
+  return new Result {Local=game,Version=remote.Version,Commit=sha,Url=download,Notes="发布分支："+game.Branch+"\n提交："+sha.Substring(0,12)+(message.Length>0?"\n"+message:""),Comparison=Compare(remote.Version,game.Version)};
  }
+ static void ValidateCommit(string sha) {if(!Regex.IsMatch(sha??"",@"^[0-9a-fA-F]{40}(?:[0-9a-fA-F]{24})?$"))throw new IOException("发布分支提交标识无效。");}
 }
