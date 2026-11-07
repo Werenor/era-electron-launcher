@@ -31,9 +31,11 @@ public sealed class GameProfile {
     public int FontSize { get; set; }
     public bool AutoMax { get; set; }
     public string LastPlayed { get; set; }
+    public List<string> DisabledPlugins { get; set; }
+    [ScriptIgnore] public string GameVersion { get; set; }
     public GameProfile() { Width = 1200; Height = 1000; FontSize = 16; ModeId = "standard"; }
     public override string ToString() { return Name; }
-    public GameProfile Copy() { return (GameProfile)MemberwiseClone(); }
+    public GameProfile Copy() { var copy=(GameProfile)MemberwiseClone(); copy.DisabledPlugins=DisabledPlugins==null?new List<string>():new List<string>(DisabledPlugins);return copy; }
 }
 public sealed class LauncherConfig {
     public int Schema { get; set; }

@@ -44,10 +44,10 @@ keystate 采用 Electron 输入事件与 Windows 原生松键校验，修复真�
 .uild.ps1
 ```
 
-脚本编译启动器和原生组件，运行检查，生成 `dist/Era-Electron-Launcher-v0.4.1-win-x64.zip` 与 SHA256SUMS.txt。构建和运行均无需下载原版引擎，无 Python 依赖。
+脚本编译启动器和原生组件，运行检查，生成 `dist/Era-Electron-Launcher-v0.5.0-win-x64.zip` 与 SHA256SUMS.txt。构建和运行均无需下载原版引擎，无 Python 依赖。
 
 ```powershell
-.\dist\Era-Electron-Launcher-v0.4.1-win-x64\StartGame.exe --self-test C:\Temp\launcher-checks.txt
+.\dist\Era-Electron-Launcher-v0.5.0-win-x64\StartGame.exe --self-test C:\Temp\launcher-checks.txt
 ```
 
 源码包括图形界面、配置存储、进程生命周期、ASAR 适配器、keystate 与原生组件。`build.ps1` 从源码生成组件校验值。
@@ -59,7 +59,7 @@ keystate 采用 Electron 输入事件与 Windows 原生松键校验，修复真�
 GPL-2.0，参见源码中的 LICENSE 和 THIRD_PARTY_NOTICES.md。启动器“关于”页内置完整许可证及第三方声明，离线可读；发布包不再附带 README、更新日志及独立法律文档。发布包不包含私人游戏目录、存档、令牌、开发机配置或原版引擎二进制。
 
 
-## v0.4.1
+## v0.5.0
 
 窗口默认使用游戏自己的尺寸、字号和最大化配置。勾选“自定义窗口”才应用启动器参数；取消后恢复游戏原配置，保留自定义数值供以后使用。旧配置未指定该选项时同样采用游戏原始窗口。自定义窗口仍需要已适配的引擎。
 
@@ -68,3 +68,19 @@ GPL-2.0，参见源码中的 LICENSE 和 THIRD_PARTY_NOTICES.md。启动器“�
 “检查启动器更新”查询GitHub正式Release，发现新版后显示版本和发布说明，可打开发布页下载。网络异常、限流会显示错误。不自动覆盖运行中的启动器。游戏下载本版未实现。
 
 安装成功后自动清理使用的 ZIP 安装包和解压暂存（包括手动选择的 ZIP）。安装失败保留手动选择的原安装包以便重试，直链下载的未完成文件会清理。安装进行中暂不允许退出启动器，以便完成安装和清理。
+
+## 独立插件声明（v0.5.0）
+游戏根目录 ere.launcher.json：
+```json
+{"plugins":[{"id":"ere-keystate","source":"github","repository":"Werenor/ere-keystate","fallback":true}]}
+```
+source/repository/id 为插件身份。缺失时弹窗选择下载、兼容运行或取消；fallback 省略或 false 时不允许兼容运行。首次下载从仓库的最新正式 Release 获取 win-x64.zip，缓存于 LocalAppData/PortArcadeLauncher/plugins/github/发布者/仓库/id。缓存插件不会因启动器更新自动改变。插件包需带 plugin.json、身份、文件 SHA-256 和代码替换锚点；按锚点唯一匹配应用，不限制引擎版本号。只修改临时副本。旧的手动实时模式保留兼容旧游戏，声明插件的游戏优先采用独立插件。
+
+
+## 游戏列表与插件页
+
+不再提供输入模式选择。游戏列表显示上次启动时间和从 GameBase 获取的版本号，最近启动的游戏在前；版本无法读取时留空。插件页检查当前游戏的声明，显示发布来源与本地安装状态，勾选决定该游戏是否启用插件。安装与启用分别操作，选择自动保存。首次打开插件页检查，声明或游戏更换后重新检查；启动前始终复查。缺失、停用、损坏或不匹配的声明插件会提醒；不支持兼容运行的插件未加载时阻止启动。旧输入模式设置不再影响插件加载。
+
+## 游戏仓库与更新声明
+
+游戏根目录 ere.launcher.json 可增加 game 对象，repository 为完整 HTTPS GitHub/GitGud 仓库地址，version 为当前游戏版本（建议与 Release tag 对应）。例如 game: { repository: https://github.com/作者/仓库, version: 0.8.0 }。此字段可与 plugins 并存；只有 game 时无需声明插件。左侧优先显示声明版本。检查游戏更新只读最新正式 Release；无法比较的版本仅显示差异，不猜测新旧。检查不会下载、解压、覆盖、搬移游戏文件，不读写 sav、存档或游戏设置；确认后仅在浏览器打开发布页。暂无 Release、私有仓库、限流及网络错误均显示检查失败，不当作已是最新。当前不支持游戏原地覆盖更新。

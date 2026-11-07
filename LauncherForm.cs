@@ -9,7 +9,11 @@ internal sealed class LauncherForm : Form {
     readonly LauncherConfig config;
     readonly ListBox profiles = new ListBox();
     readonly TextBox search = new TextBox(), name = new TextBox(), directory = new TextBox();
-    readonly ComboBox engines = new ComboBox(), modes = new ComboBox();
+    readonly ComboBox engines = new ComboBox();
+    readonly TabPage pluginPage=new TabPage("插件");
+    readonly ListView pluginList=new ListView();
+    readonly System.Collections.Generic.Dictionary<string,string> pluginChecks=new System.Collections.Generic.Dictionary<string,string>();
+    bool listingPlugins;
     readonly NumericUpDown width = new NumericUpDown(), height = new NumericUpDown(), font = new NumericUpDown();
     readonly CheckBox maximize = new CheckBox(), customWindow = new CheckBox { Text="自定义窗口", AutoSize=true };
     readonly Timer autoSave = new Timer { Interval = 350 };
@@ -27,7 +31,7 @@ internal sealed class LauncherForm : Form {
     bool loading, dirty, closeAfterRun, installing;
     internal LauncherForm(LauncherConfig data) {
         config = data; Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
-        Text = "Era-Electron启动器 v0.4.1"; ClientSize = new Size(1100, 730); MinimumSize = new Size(980, 690);
+        Text = "Era-Electron启动器 v0.5.0"; ClientSize = new Size(1100, 730); MinimumSize = new Size(980, 690);
         StartPosition = FormStartPosition.CenterScreen; Font = new Font("Microsoft YaHei UI", 9.5f);
         BackColor = Color.FromArgb(244, 246, 250); AutoScaleMode = AutoScaleMode.Font;
         BuildSidebar(); BuildContent(); RefreshEngines(); RefreshProfiles(config.SelectedId);
@@ -58,7 +62,11 @@ internal sealed class LauncherForm : Form {
             var profile = (GameProfile)profiles.Items[e.Index]; bool selected = (e.State & DrawItemState.Selected) != 0;
             using (var bg = new SolidBrush(selected ? Color.FromArgb(47, 73, 111) : sidebar.BackColor)) e.Graphics.FillRectangle(bg, e.Bounds);
             TextRenderer.DrawText(e.Graphics, profile.Name, Font, new Rectangle(e.Bounds.X + 10, e.Bounds.Y + 9, e.Bounds.Width - 18, 23), Color.White, TextFormatFlags.EndEllipsis);
-            using (var small = new Font(Font.FontFamily, 8)) TextRenderer.DrawText(e.Graphics, (config.Engines.Find(i => i.Id == profile.EngineId) == null ? "未选择引擎" : (config.Engines.Find(i => i.Id == profile.EngineId).Version ?? "未知版本")) + (profile.ModeId == "keystate" ? " · 实时按键" : " · 标准输入"), small, new Rectangle(e.Bounds.X + 10, e.Bounds.Y + 32, e.Bounds.Width - 18, 20), Color.LightSteelBlue, TextFormatFlags.EndEllipsis);
+            using(var small=new Font(Font.FontFamily,8)) {
+                int versionWidth=78;
+                TextRenderer.DrawText(e.Graphics,String.IsNullOrEmpty(profile.LastPlayed)?"尚未启动":profile.LastPlayed,small,new Rectangle(e.Bounds.X+10,e.Bounds.Y+32,e.Bounds.Width-versionWidth-26,20),Color.LightSteelBlue,TextFormatFlags.EndEllipsis);
+                TextRenderer.DrawText(e.Graphics,profile.GameVersion??"",small,new Rectangle(e.Bounds.Right-versionWidth-8,e.Bounds.Y+32,versionWidth,20),Color.LightSteelBlue,TextFormatFlags.Right|TextFormatFlags.EndEllipsis);
+            }
         };
         var actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 126, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(0, 12, 0, 0) };
         foreach (var button in new[] { Button("＋ 导入游戏", ImportGame, true), Button("复制启动配置", Duplicate), Button("移出游戏列表", Remove) }) { button.Width = 220; button.Height = 30; button.Margin = new Padding(0, 0, 0, 6); actions.Controls.Add(button); }
@@ -71,17 +79,17 @@ internal sealed class LauncherForm : Form {
         heading.Text = "选择一个游戏实例"; heading.Font = new Font(Font.FontFamily, 19, FontStyle.Bold); heading.Dock = DockStyle.Top; heading.Height = 43;
         summary.Dock = DockStyle.Fill; summary.ForeColor = Color.FromArgb(105, 119, 139); summary.AutoEllipsis = true;
         header.Controls.Add(summary); header.Controls.Add(heading);
-        var bottom = new Panel { Dock = DockStyle.Bottom, Height = 92 };
+        var bottom = new Panel { Dock = DockStyle.Bottom, Height = 130 };
         status.Dock = DockStyle.Top; status.Height = 30; status.Text = ""; status.ForeColor = Color.FromArgb(69, 89, 116);
-        var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44 };
+        var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 82 };
         SetupButton(launch, "启动游戏", Launch, true); launch.Width = 160;
         SetupButton(stop, "停止游戏", StopGame, false); stop.Enabled = false;
-        buttons.Controls.Add(Button("检查启动器更新", CheckUpdate)); buttons.Controls.Add(launch); buttons.Controls.Add(stop); buttons.Controls.Add(Button("游戏目录", OpenGame)); buttons.Controls.Add(Button("日志目录", OpenLogs));
+        buttons.Controls.Add(Button("检查启动器更新", CheckUpdate)); buttons.Controls.Add(launch); buttons.Controls.Add(stop); buttons.Controls.Add(Button("检查游戏更新", CheckGameUpdate)); buttons.Controls.Add(Button("游戏目录", OpenGame)); buttons.Controls.Add(Button("日志目录", OpenLogs));
         bottom.Controls.Add(buttons); bottom.Controls.Add(status);
-        tabs.Dock = DockStyle.Fill; tabs.Padding = new Point(16, 8); tabs.TabPages.Add(settings); tabs.TabPages.Add(logs); tabs.TabPages.Add(enginePage);
+        tabs.Dock = DockStyle.Fill; tabs.Padding = new Point(16, 8); tabs.TabPages.Add(settings); tabs.TabPages.Add(pluginPage); tabs.TabPages.Add(logs); tabs.TabPages.Add(enginePage);
         settings.Padding = new Padding(18); settings.BackColor = logs.BackColor = enginePage.BackColor = Color.White;
         tabs.TabPages.Add(about); about.BackColor=Color.White;
-        BuildSettings(); BuildLogs(); BuildEngines(); BuildAbout();
+        BuildSettings(); BuildPlugins(); tabs.SelectedIndexChanged+=(s,e)=>{if(tabs.SelectedTab==pluginPage)CheckCurrentPlugins(false);}; BuildLogs(); BuildEngines(); BuildAbout();
         content.Controls.Add(tabs); content.Controls.Add(header); content.Controls.Add(bottom); Controls.Add(content); content.BringToFront();
     }
     void SetupButton(Button button, string text, EventHandler handler, bool primary) {
@@ -94,25 +102,92 @@ internal sealed class LauncherForm : Form {
         control.Dock = DockStyle.Fill; control.Margin = new Padding(0, 7, 0, 5); table.Controls.Add(control, 1, row);
     }
     void BuildSettings() {
-        var table = new TableLayoutPanel { Dock = DockStyle.Top, Height = 307, ColumnCount = 2, RowCount = 7 };
+        var table = new TableLayoutPanel { Dock = DockStyle.Top, Height = 264, ColumnCount = 2, RowCount = 6 };
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 108)); table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        directory.ReadOnly = true; engines.DropDownStyle = modes.DropDownStyle = ComboBoxStyle.DropDownList;
-        modes.Items.AddRange(BuildInfo.Modes);
+        directory.ReadOnly = true; engines.DropDownStyle = ComboBoxStyle.DropDownList;
         var dimensions = new FlowLayoutPanel { FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
         width.Minimum = 640; width.Maximum = 3840; height.Minimum = 480; height.Maximum = 2160; width.Width = height.Width = 102;
         dimensions.Controls.Add(customWindow); dimensions.Controls.Add(width); dimensions.Controls.Add(new Label { Text = "×", Width = 25, TextAlign = ContentAlignment.MiddleCenter }); dimensions.Controls.Add(height);
         dimensions.Controls.Add(new Label { Text = "  宽 × 高", Width = 90, TextAlign = ContentAlignment.MiddleCenter });
         font.Minimum = 10; font.Maximum = 32; font.Width = 95;
         maximize.Text = "启动时最大化"; maximize.AutoSize = true;
-        Row(table, "游戏名称", name, 0); Row(table, "游戏目录", directory, 1); Row(table, "引擎安装", engines, 2); Row(table, "输入模式", modes, 3); Row(table, "窗口尺寸", dimensions, 4); Row(table, "文字字号", font, 5); Row(table, "窗口行为", maximize, 6);
+        Row(table, "游戏名称", name, 0); Row(table, "游戏目录", directory, 1); Row(table, "引擎安装", engines, 2); Row(table, "窗口尺寸", dimensions, 3); Row(table, "文字字号", font, 4); Row(table, "窗口行为", maximize, 5);
 
         var actions = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 45 };
         actions.Controls.Add(Button("使用游戏原始窗口", (s, e) => { customWindow.Checked=false; width.Value = 1200; height.Value = 1000; font.Value = 16; maximize.Checked = false; }));
         saveHint.AutoSize = true; saveHint.ForeColor = Color.FromArgb(160, 110, 32); saveHint.Padding = new Padding(0, 9, 0, 0); actions.Controls.Add(saveHint);
         settings.Controls.Add(actions); settings.Controls.Add(table);
         customWindow.CheckedChanged += (s,e)=>{ UpdateWindowControls(); Edited(s,e); };
-        name.TextChanged += Edited; engines.SelectedIndexChanged += (s,e) => { if (loading) return; UpdateModes(modes.SelectedItem == null ? "standard" : ((EngineMode)modes.SelectedItem).Id); Edited(s,e); }; modes.SelectedIndexChanged += Edited; width.ValueChanged += Edited; height.ValueChanged += Edited; font.ValueChanged += Edited; maximize.CheckedChanged += Edited;
+        name.TextChanged += Edited; engines.SelectedIndexChanged += (s,e) => { if (loading) return; UpdateModes("standard"); Edited(s,e); }; width.ValueChanged += Edited; height.ValueChanged += Edited; font.ValueChanged += Edited; maximize.CheckedChanged += Edited;
     }
+    void BuildPlugins() {
+        pluginPage.Padding=new Padding(12);pluginPage.BackColor=Color.White;
+        pluginList.Dock=DockStyle.Fill;pluginList.View=View.Details;pluginList.FullRowSelect=true;pluginList.MultiSelect=false;pluginList.CheckBoxes=true;pluginList.ShowItemToolTips=true;
+        pluginList.Columns.Add("启用 / 插件",170);pluginList.Columns.Add("发布来源",300);pluginList.Columns.Add("状态",230);
+        var actions=new FlowLayoutPanel {Dock=DockStyle.Bottom,Height=45};
+        actions.Controls.Add(Button("检查插件",(s,e)=>CheckCurrentPlugins(true)));
+        actions.Controls.Add(Button("安装选中插件",InstallSelectedPlugin));
+        actions.Controls.Add(Button("打开插件目录",(s,e)=>{
+            if(pluginList.SelectedItems.Count==0){Info("请先选中一个插件。");return;}
+            try {
+                string path=GamePlugins.DirectoryOf((GamePlugins.State)pluginList.SelectedItems[0].Tag);
+                if(!Directory.Exists(path)){Info("该插件尚未安装，本地目录不存在。");return;}
+                OpenFolder(path);
+            }catch(Exception error){Error(error.Message);}
+        }));
+        pluginPage.Controls.Add(pluginList);pluginPage.Controls.Add(actions);
+        pluginList.ItemCheck+=(s,e)=>{
+            if(listingPlugins||current==null)return;
+            var plugin=(GamePlugins.State)pluginList.Items[e.Index].Tag;
+            if(current.DisabledPlugins==null)current.DisabledPlugins=new System.Collections.Generic.List<string>();
+            var before=current.DisabledPlugins.ToList();
+            current.DisabledPlugins.RemoveAll(x=>x==plugin.Key);
+            if(e.NewValue!=CheckState.Checked)current.DisabledPlugins.Add(plugin.Key);
+            if(!Persist()){current.DisabledPlugins=before;e.NewValue=e.CurrentValue;return;}
+            plugin.Enabled=e.NewValue==CheckState.Checked;
+        };
+    }
+    bool CheckCurrentPlugins(bool force) {
+        if(current==null){pluginList.Items.Clear();pluginList.Tag=null;return false;}
+        try {
+            string game=LauncherPaths.Resolve(current.Directory),file=Path.Combine(game,"ere.launcher.json");
+            string stamp=game+"|"+current.EngineId+"|"+(File.Exists(file)?SessionTools.Sha(file):"none");string prior;
+            if(!force && pluginChecks.TryGetValue(current.Id,out prior) && prior==stamp && pluginList.Tag as string==current.Id)return true;
+            var engine=config.Engines.Find(x=>x.Id==current.EngineId);
+            var states=GamePlugins.Check(current,engine==null?null:LauncherPaths.Resolve(engine.Directory));
+            listingPlugins=true;pluginList.Items.Clear();
+            foreach(var plugin in states) {
+                var item=new ListViewItem(plugin.Id){Tag=plugin,Checked=plugin.Enabled,ToolTipText=plugin.Status};item.SubItems.Add(plugin.Repository);item.SubItems.Add(plugin.Status);pluginList.Items.Add(item);
+            }
+            pluginList.Tag=current.Id;pluginChecks[current.Id]=stamp;return true;
+        }catch(Exception error){pluginList.Items.Clear();pluginChecks.Remove(current.Id);Error("插件检查失败："+error.Message);return false;}
+        finally{listingPlugins=false;}
+    }
+    async void InstallSelectedPlugin(object sender,EventArgs e) {
+        if(current==null||session!=null||installing||pluginList.SelectedItems.Count==0)return;
+        var plugin=(GamePlugins.State)pluginList.SelectedItems[0].Tag;
+        if(plugin.Installed){Info("该插件已安装。");return;}
+        if(dirty&&!SaveEditor(true))return;
+        installing=true;sidebar.Enabled=settings.Enabled=enginePage.Enabled=pluginPage.Enabled=launch.Enabled=false;
+        try {
+            await System.Threading.Tasks.Task.Run(()=>GamePlugins.InstallOne(plugin,text=>UI(()=>status.Text=text)));
+            CheckCurrentPlugins(true);status.Text="插件已安装";
+        }catch(Exception error){Error("插件安装失败："+error.Message);}
+        finally{installing=false;sidebar.Enabled=settings.Enabled=enginePage.Enabled=pluginPage.Enabled=launch.Enabled=true;}
+    }
+    bool PrepareGamePlugins() {
+        if(!CheckCurrentPlugins(true))return false;
+        var blocked=pluginList.Items.Cast<ListViewItem>().Select(x=>(GamePlugins.State)x.Tag).Where(x=>!x.Usable||!x.Enabled).ToList();
+        if(blocked.Count==0)return true;
+        string description=String.Join("\n",blocked.Select(x=>x.Id+" — "+(!x.Enabled?"已停用":x.Status)));
+        if(blocked.Any(x=>!x.Fallback)) {
+            MessageBox.Show(this,"以下声明的插件未加载，游戏不支持缺少它们时运行：\n\n"+description+"\n\n请在插件页安装并启用。","声明插件未加载",MessageBoxButtons.OK,MessageBoxIcon.Warning);
+            tabs.SelectedTab=pluginPage;return false;
+        }
+        bool proceed=MessageBox.Show(this,"以下声明的插件未加载：\n\n"+description+"\n\n游戏声明支持兼容运行，是否继续？选择否可前往插件页安装或启用。","声明插件未加载",MessageBoxButtons.YesNo,MessageBoxIcon.Warning)==DialogResult.Yes;
+        if(!proceed)tabs.SelectedTab=pluginPage;return proceed;
+    }
+
     void BuildLogs() {
         logs.Padding = new Padding(12); output.Dock = DockStyle.Fill; output.ReadOnly = true; output.BackColor = Color.FromArgb(24, 32, 45); output.ForeColor = Color.FromArgb(190, 207, 229); output.Font = new Font("Consolas", 10); output.BorderStyle = BorderStyle.None;
         var actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 43, Padding = new Padding(0, 7, 0, 0) };
@@ -128,7 +203,7 @@ internal sealed class LauncherForm : Form {
     }
     void BuildAbout() {
         about.Padding=new Padding(16);
-        var title=new Label {Dock=DockStyle.Top,Height=76,Text="Era-Electron 启动器 v0.4.1\r\n独立第三方启动器 · GPL-2.0 许可证",Font=new Font(Font.FontFamily,12),Padding=new Padding(0,5,0,0)};
+        var title=new Label {Dock=DockStyle.Top,Height=76,Text="Era-Electron 启动器 v0.5.0\r\n独立第三方启动器 · GPL-2.0 许可证",Font=new Font(Font.FontFamily,12),Padding=new Padding(0,5,0,0)};
         var documents=new TabControl {Dock=DockStyle.Fill};
         foreach(var entry in new[] {new[]{"许可证","Launcher.LICENSE"},new[]{"第三方声明","Launcher.NOTICES"}}) {
             var page=new TabPage(entry[0]) {Padding=new Padding(10)};
@@ -153,10 +228,6 @@ internal sealed class LauncherForm : Form {
         bool old=loading; loading=true;
         var engine=engines.SelectedItem as EngineInstall;
         bool adapted=EngineCatalog.Adapted(engine);
-        modes.Items.Clear(); modes.Items.Add(BuildInfo.Modes[0]);
-        if(adapted) modes.Items.Add(BuildInfo.Modes[1]);
-        else if(desired=="keystate") modes.Items.Add(new EngineMode {Id="keystate",Name="实时按键（当前引擎不兼容，请切换标准输入）",KeyState=true});
-        modes.SelectedIndex=desired=="keystate" && modes.Items.Count>1 ? 1 : 0;
         customWindow.Enabled=adapted; UpdateWindowControls();
         loading=old;
     }
@@ -164,7 +235,7 @@ internal sealed class LauncherForm : Form {
     void Edited(object sender, EventArgs e) { if (!loading && current != null) { dirty=true; saveHint.Text=""; autoSave.Stop(); autoSave.Start(); } }
     void RefreshProfiles(string selected) {
         loading = true; profiles.Items.Clear();
-        foreach (var p in config.Profiles.Where(p => String.IsNullOrEmpty(search.Text) || p.Name.IndexOf(search.Text, StringComparison.OrdinalIgnoreCase) >= 0)) profiles.Items.Add(p);
+        foreach (var p in config.Profiles.OrderByDescending(p=>GameInformation.LastPlayed(p.LastPlayed)).Where(p => String.IsNullOrEmpty(search.Text) || p.Name.IndexOf(search.Text, StringComparison.OrdinalIgnoreCase) >= 0)) {p.GameVersion=GameInformation.Version(EnginePaths.Display(p.Directory));profiles.Items.Add(p);}
         if (selected != null) profiles.SelectedItem = config.Profiles.Find(p => p.Id == selected);
         if (profiles.SelectedIndex < 0 && profiles.Items.Count > 0) profiles.SelectedIndex = 0;
         loading = false; SelectProfile();
@@ -183,12 +254,13 @@ internal sealed class LauncherForm : Form {
             config.SelectedId = next.Id;
         } else { heading.Text = "尚未添加游戏"; summary.Text = "可以导入一个本地游戏目录。"; }
         dirty = false; saveHint.Text = ""; loading = false;
+        if(tabs.SelectedTab==pluginPage)CheckCurrentPlugins(false);
     }
     bool SaveEditor(bool showErrors = false) {
         autoSave.Stop();
         if (current == null) return false;
         try {
-            var copy = current.Copy(); copy.Name = name.Text.Trim(); copy.EngineId = engines.SelectedItem == null ? null : ((EngineInstall)engines.SelectedItem).Id; copy.ModeId = modes.SelectedItem == null ? null : ((EngineMode)modes.SelectedItem).Id;
+            var copy = current.Copy(); copy.Name = name.Text.Trim(); copy.EngineId = engines.SelectedItem == null ? null : ((EngineInstall)engines.SelectedItem).Id; copy.ModeId = "standard";
             copy.CustomWindow=customWindow.Checked; copy.Width = (int)width.Value; copy.Height = (int)height.Value; copy.FontSize = (int)font.Value; copy.AutoMax = maximize.Checked;
             LauncherStore.Validate(copy, config);
             int index = config.Profiles.FindIndex(p => p.Id == current.Id); config.Profiles[index] = copy;
@@ -329,12 +401,27 @@ internal sealed class LauncherForm : Form {
         if(current!=null) engines.SelectedItem=config.Engines.Find(x=>x.Id==current.EngineId);
         status.Text="引擎已安装并登记："+install.Version;
     }
+    async void CheckGameUpdate(object sender,EventArgs e) {
+        if(current==null){Info("请先选择一个游戏。");return;}
+        var button=sender as Button;if(button!=null)button.Enabled=false;
+        string directory=LauncherPaths.Resolve(current.Directory),title=current.Name;
+        try {
+            var result=await GameUpdates.Check(directory);
+            string message="当前版本："+result.Local.Version+"\n发布版本："+result.Version;
+            if(result.Comparison==0){Info(title+"\n"+message+"\n当前已是最新正式版本。");return;}
+            if(result.Comparison<0){Info(title+"\n"+message+"\n本地版本比当前正式发布版本更新。");return;}
+            string heading=result.Comparison.HasValue?"发现游戏更新":"发现不同版本，无法自动判断版本先后";
+            if(MessageBox.Show(this,title+"\n"+message+"\n\n"+result.Notes+"\n\n打开发布页？此次检查不会改动游戏、存档或设置。","游戏更新："+heading,MessageBoxButtons.YesNo,MessageBoxIcon.Information)==DialogResult.Yes)
+                Process.Start(new ProcessStartInfo(result.Url){UseShellExecute=true});
+        }catch(Exception error){Error("游戏更新检查失败："+error.Message);}
+        finally {if(button!=null&&!button.IsDisposed)button.Enabled=true;}
+    }
     async void CheckUpdate(object sender, EventArgs e) {
         var button=sender as Button;if(button!=null)button.Enabled=false;
         try {
             var release=await Downloads.LauncherLatest();
             Version latest; if(!Version.TryParse(release.Tag.TrimStart('v','V'),out latest))throw new IOException("发布版本号无法识别。");
-            if(latest<=new Version("0.4.1")) {Info("当前已是最新版本（v0.4.1）。");return;}
+            if(latest<=new Version("0.5.0")) {Info("当前已是最新版本（v0.5.0）。");return;}
             if(MessageBox.Show(this,"发现新版 "+release.Tag+"\n\n"+release.Notes+"\n\n打开发布页下载？","启动器更新",MessageBoxButtons.YesNo,MessageBoxIcon.Information)==DialogResult.Yes)
                 Process.Start(new ProcessStartInfo(release.Url){UseShellExecute=true});
         } catch(Exception error) {Error("更新检查失败："+error.Message);}
@@ -344,7 +431,7 @@ internal sealed class LauncherForm : Form {
         if (engineList.SelectedItems.Count == 0) { Info("请先选中一个引擎。"); return; }
         var install = (EngineInstall)engineList.SelectedItems[0].Tag; Cursor = Cursors.WaitCursor;
         if(!EnsureEngineLocation(install)) {Cursor=Cursors.Default;return;}
-        try { GameSession.ValidateEngine(install, BuildInfo.Modes[0]); if(EngineCatalog.Adapted(install)) GameSession.ValidateEngine(install,BuildInfo.Modes[1]); Info("校验通过："+install.Version+(EngineCatalog.Adapted(install) ? "，支持实时按键扩展。" : "，使用原版标准启动。")); }
+        try { GameSession.ValidateEngine(install, BuildInfo.Modes[0]); Info("校验通过："+install.Version); }
         catch (Exception error) { Error(error.Message); } finally { Cursor = Cursors.Default; }
     }
     void Launch(object sender, EventArgs e) {
@@ -352,17 +439,29 @@ internal sealed class LauncherForm : Form {
         var selectedEngine=engines.SelectedItem as EngineInstall;
         if(selectedEngine==null) {Error("请先登记并选择一个引擎版本。");return;}
         if(!EnsureEngineLocation(selectedEngine) || !SaveEditor(true))return;
-        var profile = current.Copy(); var engine = config.Engines.Find(x => x.Id == profile.EngineId); var mode = BuildInfo.Modes.First(x => x.Id == profile.ModeId);
+        var profile = current.Copy(); var engine = config.Engines.Find(x => x.Id == profile.EngineId); var mode = BuildInfo.Modes[0];
         if(engine == null) { Error("请先登记并选择一个引擎版本。"); return; }
-        try {GameSession.ValidateEngine(engine,mode);}catch(Exception error) {Error(error.Message);return;}
+        try {GameSession.ValidateEngine(engine,GamePlugins.Declared(LauncherPaths.Resolve(profile.Directory))?BuildInfo.Modes[0]:mode);}catch(Exception error) {Error(error.Message);return;}
+        if(!PrepareGamePlugins())return;
+        profile=current.Copy();
+        foreach(var plugin in pluginList.Items.Cast<ListViewItem>().Select(x=>(GamePlugins.State)x.Tag).Where(x=>!x.Usable)) {
+            if(profile.DisabledPlugins==null)profile.DisabledPlugins=new System.Collections.Generic.List<string>();
+            if(!profile.DisabledPlugins.Contains(plugin.Key))profile.DisabledPlugins.Add(plugin.Key);
+        }
         output.Clear(); tabs.SelectedTab = logs; sidebar.Enabled = settings.Enabled = enginePage.Enabled = launch.Enabled = false; stop.Enabled = true;
         session = new GameSession();
-        session.Message += line => UI(() => { if (output.TextLength > 150000) output.Text = output.Text.Substring(output.TextLength - 100000); output.AppendText(line + Environment.NewLine); output.ScrollToCaret(); });
-        session.State += text => UI(() => status.Text = text.StartsWith("运行中") || text.StartsWith("正在停止") ? text : "正在处理…");
+        session.Message += line => UI(() => { if (output.TextLength > 150000) output.Text = output.Text.Substring(output.TextLength - 100000); output.AppendText(line + Environment.NewLine); output.ScrollToCaret(); if(line.Contains("插件未启用"))MessageBox.Show(this,line,"插件未加载",MessageBoxButtons.OK,MessageBoxIcon.Warning); });
+        bool recordedStart=false;
+        session.State += text => UI(() => {
+            status.Text=text.StartsWith("运行中") || text.StartsWith("正在停止")?text:"正在处理…";
+            if(text.StartsWith("运行中") && !recordedStart) {
+                recordedStart=true;var started=config.Profiles.Find(x=>x.Id==profile.Id);started.LastPlayed=DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");Persist();RefreshProfiles(profile.Id);launch.Enabled=settings.Enabled=false;
+            }
+        });
         session.Finished += result => UI(() => {
             session = null; sidebar.Enabled = settings.Enabled = enginePage.Enabled = launch.Enabled = true; stop.Enabled = false; lastLog = result.LogFile;
             status.Text = result.Error != null ? "启动失败 · 查看运行日志" : result.CleanupComplete ? "已结束" : "已结束 · 部分文件留待下次清理";
-            if (result.Started) { var item = config.Profiles.Find(x => x.Id == profile.Id); item.LastPlayed = DateTime.Now.ToString("yyyy-MM-dd HH:mm"); Persist(); summary.Text = "上次启动：" + item.LastPlayed + "\n" + LauncherPaths.Resolve(item.Directory); }
+            if (result.Started) { var item = config.Profiles.Find(x => x.Id == profile.Id); if(!recordedStart)item.LastPlayed = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"); Persist();RefreshProfiles(profile.Id); summary.Text = "上次启动：" + item.LastPlayed + "\n" + LauncherPaths.Resolve(item.Directory); }
             if (closeAfterRun) Close();
         });
         session.Start(profile, engine, mode);

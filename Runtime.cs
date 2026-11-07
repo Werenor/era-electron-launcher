@@ -57,7 +57,8 @@ internal sealed class GameSession {
             gameLock = new Mutex(false, GameMutexName(gameDirectory));
             try { acquired = gameLock.WaitOne(0); } catch (AbandonedMutexException) { acquired = true; }
             if (!acquired) throw new IOException("这个游戏目录已有运行中的实例。请先关闭它，避免同时写入同一份存档。");
-            Status("正在校验引擎与启动组件…"); ValidateEngine(install, mode); CheckStop();
+            Status("正在校验引擎与启动组件…");
+            ValidateEngine(install, BuildInfo.Modes[0]); CheckStop();
             SessionTools.CleanupStale();
             session = Path.Combine(LauncherPaths.Sessions, Guid.NewGuid().ToString("N")); Directory.CreateDirectory(session);
             File.WriteAllText(Path.Combine(session, ".owner"), "PortArcade-keystate-session-v1");
@@ -67,8 +68,9 @@ internal sealed class GameSession {
             Status("正在准备独立引擎副本…");
             CopyTree(source, runtime); CheckStop();
             bool adapted = EngineCatalog.Adapted(install);
-            if (adapted) { Status("正在准备运行时扩展…"); EngineAdapter.Apply(runtime, mode.KeyState); }
+            if (adapted) { Status("正在准备运行时扩展…"); EngineAdapter.Apply(runtime, false); }
             else Log("使用原版标准启动；窗口设置由游戏配置决定。");
+            GamePlugins.Apply(gameDirectory,runtime,Log,profile);
             string profileDirectory = Path.Combine(LauncherPaths.UserRoot,"instances",profile.Id,"profile");
             EngineAdapter.PreparePreferences(profileDirectory, gameDirectory);
             string working = Path.Combine(session,"work"); Directory.CreateDirectory(working);

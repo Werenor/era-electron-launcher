@@ -63,14 +63,13 @@ internal static class LauncherPathTests {
             Check(incompatible,"new engine cannot silently receive an unsupported key-state adapter");
             config.Profiles[0].ModeId="keystate";
             using(var form=new LauncherForm(config)) {
-                var modes=(ComboBox)typeof(LauncherForm).GetField("modes",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(form);
-                Check(((EngineMode)modes.SelectedItem).Id=="keystate","UI must not silently downgrade saved input mode");
+                Check(typeof(LauncherForm).GetField("modes",BindingFlags.Instance|BindingFlags.NonPublic)==null,"input-mode selector removed");
                 var tabs=(TabControl)typeof(LauncherForm).GetField("tabs",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(form);
-                Check(tabs.TabPages.Count==4&&tabs.TabPages[3].Text=="关于","About must be available without selecting a game");
-                var license=tabs.TabPages[3].Controls.Find("Launcher.LICENSE",true).OfType<TextBox>().Single();
+                Check(tabs.TabPages.Count==5&&tabs.TabPages[4].Text=="关于","About must be available without selecting a game");
+                var license=tabs.TabPages[4].Controls.Find("Launcher.LICENSE",true).OfType<TextBox>().Single();
                 Check(license.ReadOnly&&license.Text.StartsWith("                    GNU GENERAL PUBLIC LICENSE")&&license.Text.Contains("END OF TERMS AND CONDITIONS"),"About includes the full read-only embedded license");
                 Check(license.Text.Contains("\r\n"),"Windows legal text must preserve visible line breaks");
-                Check(tabs.TabPages[3].Controls.Find("Launcher.NOTICES",true).OfType<TextBox>().Single().Text.Contains("gitgud.io/umaera/engine/era-electron"),"third-party attribution is available offline");
+                Check(tabs.TabPages[4].Controls.Find("Launcher.NOTICES",true).OfType<TextBox>().Single().Text.Contains("gitgud.io/umaera/engine/era-electron"),"third-party attribution is available offline");
             }
             bool actionable=false;try {EngineCatalog.Executable(origin);}catch(IOException error){actionable=error.Message.Contains("重新定位");}
             Check(actionable,"missing directory gets an actionable message before enumeration");
