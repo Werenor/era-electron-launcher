@@ -36,7 +36,8 @@ internal static class GamePlugins {
   }
  }
  internal sealed class State {
-  internal string Key,Id,Repository,Status; internal bool Installed,Enabled,Fallback,Usable; internal Dictionary<string,object> Request;
+  internal string Key,Id,Repository,Status,Name,EngineVersions;
+  internal string DisplayStatus {get{return !Installed?"未安装":Enabled && Usable?"已启用":"未启用";}} internal bool Installed,Enabled,Fallback,Usable; internal Dictionary<string,object> Request;
  }
  static string Key(Dictionary<string,object> request){return Text(request,"source").ToLowerInvariant()+"/"+Text(request,"repository").ToLowerInvariant()+"/"+Text(request,"id");}
  static bool Disabled(GameProfile profile,string key){return profile.DisabledPlugins!=null && profile.DisabledPlugins.Contains(key);}
@@ -46,11 +47,13 @@ internal static class GamePlugins {
   var codeCache=new Dictionary<string,string>();
   foreach(var entry in Requests(game)) {
    var request=Obj(entry);string cache=Cache(request);
-   var state=new State {Key=Key(request),Id=Text(request,"id"),Repository=Text(request,"source")+"/"+Text(request,"repository"),Request=request,
+   var state=new State {Key=Key(request),Id=Text(request,"id"),Repository=Text(request,"source")+"/"+Text(request,"repository"),Request=request,Name=Text(request,"id"),EngineVersions=VersionLabel(request),
     Fallback=request.ContainsKey("fallback") && request["fallback"] is bool && (bool)request["fallback"],Enabled=!Disabled(profile,Key(request))};
    state.Installed=File.Exists(Path.Combine(cache,"plugin.json"));state.Status=state.Installed?"已安装":"未安装";
    if(state.Installed)try {
     var plugin=Obj(Read(Path.Combine(cache,"plugin.json")));
+    if(plugin.ContainsKey("name") && !String.IsNullOrWhiteSpace(Text(plugin,"name")))state.Name=Text(plugin,"name");
+    state.EngineVersions=VersionLabel(plugin);
     if(Text(plugin,"id")!=state.Id||Text(plugin,"source")!=Text(request,"source")||!String.Equals(Text(plugin,"repository"),Text(request,"repository"),StringComparison.OrdinalIgnoreCase))throw new IOException("身份不符");
     foreach(var file in (object[])plugin["files"]) {var data=Obj(file);if(!String.Equals(SessionTools.Sha(Child(cache,Text(data,"source"))),Text(data,"sha256"),StringComparison.OrdinalIgnoreCase))throw new IOException("文件损坏");}
     state.Usable=true;
@@ -64,6 +67,12 @@ internal static class GamePlugins {
    result.Add(state);
   }
   return result;
+ }
+ static string VersionLabel(Dictionary<string,object> manifest) {
+  if(!manifest.ContainsKey("engineVersions"))return "未声明";
+  var versions=manifest["engineVersions"] as object[];
+  string label=versions==null?Convert.ToString(manifest["engineVersions"]):String.Join("、",Array.ConvertAll(versions,Convert.ToString));
+  return String.IsNullOrWhiteSpace(label)?"未声明":label;
  }
  internal static string DirectoryOf(State state) {return Cache(state.Request);}
  internal static void InstallOne(State state,Action<string> log) {

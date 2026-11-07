@@ -123,7 +123,7 @@ internal sealed class LauncherForm : Form {
     void BuildPlugins() {
         pluginPage.Padding=new Padding(12);pluginPage.BackColor=Color.White;
         pluginList.Dock=DockStyle.Fill;pluginList.View=View.Details;pluginList.FullRowSelect=true;pluginList.MultiSelect=false;pluginList.CheckBoxes=true;pluginList.ShowItemToolTips=true;
-        pluginList.Columns.Add("启用 / 插件",170);pluginList.Columns.Add("发布来源",300);pluginList.Columns.Add("状态",230);
+        pluginList.Columns.Add("插件名称",240);pluginList.Columns.Add("适用版本号",250);pluginList.Columns.Add("状态",180);
         var actions=new FlowLayoutPanel {Dock=DockStyle.Bottom,Height=45};
         actions.Controls.Add(Button("检查插件",(s,e)=>CheckCurrentPlugins(true)));
         actions.Controls.Add(Button("安装选中插件",InstallSelectedPlugin));
@@ -145,6 +145,7 @@ internal sealed class LauncherForm : Form {
             if(e.NewValue!=CheckState.Checked)current.DisabledPlugins.Add(plugin.Key);
             if(!Persist()){current.DisabledPlugins=before;e.NewValue=e.CurrentValue;return;}
             plugin.Enabled=e.NewValue==CheckState.Checked;
+            pluginList.Items[e.Index].SubItems[2].Text=plugin.DisplayStatus;
         };
     }
     bool CheckCurrentPlugins(bool force) {
@@ -157,7 +158,7 @@ internal sealed class LauncherForm : Form {
             var states=GamePlugins.Check(current,engine==null?null:LauncherPaths.Resolve(engine.Directory));
             listingPlugins=true;pluginList.Items.Clear();
             foreach(var plugin in states) {
-                var item=new ListViewItem(plugin.Id){Tag=plugin,Checked=plugin.Enabled,ToolTipText=plugin.Status};item.SubItems.Add(plugin.Repository);item.SubItems.Add(plugin.Status);pluginList.Items.Add(item);
+                var item=new ListViewItem(plugin.Name){Tag=plugin,Checked=plugin.Enabled,ToolTipText=plugin.Repository+"\n"+plugin.Status};item.SubItems.Add(plugin.EngineVersions);item.SubItems.Add(plugin.DisplayStatus);pluginList.Items.Add(item);
             }
             pluginList.Tag=current.Id;pluginChecks[current.Id]=stamp;return true;
         }catch(Exception error){pluginList.Items.Clear();pluginChecks.Remove(current.Id);Error("插件检查失败："+error.Message);return false;}

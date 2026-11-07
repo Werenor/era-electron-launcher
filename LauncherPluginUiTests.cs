@@ -21,7 +21,10 @@ internal static class LauncherPluginUiTests {
    var tabs=(TabControl)Field(form,"tabs");var plugins=(TabPage)Field(form,"pluginPage");tabs.SelectedTab=plugins;
    typeof(LauncherForm).GetMethod("CheckCurrentPlugins",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(form,new object[]{false});
    var view=(ListView)Field(form,"pluginList");var handle=view.Handle;Verify(view.Items.Count==1 && view.Items[0].Checked,"plugin check populates per-game tab");
-   view.Items[0].Checked=false;Verify(recent.DisabledPlugins!=null && recent.DisabledPlugins.Count==1 && (old.DisabledPlugins==null||old.DisabledPlugins.Count==0),"per-game disable isolation");
+   Verify(view.Columns[0].Text=="插件名称" && view.Columns[1].Text=="适用版本号","plugin page columns");
+   Verify(view.Items[0].SubItems[1].Text=="未声明" && view.Items[0].SubItems[2].Text=="已启用","version fallback and enabled status");
+   view.Items[0].Checked=false;
+   Verify(view.Items[0].SubItems[2].Text=="未启用","status updates when disabled");Verify(recent.DisabledPlugins!=null && recent.DisabledPlugins.Count==1 && (old.DisabledPlugins==null||old.DisabledPlugins.Count==0),"per-game disable isolation");
    var saved=LauncherStore.Load();Verify(saved.Profiles.Find(p=>p.Id=="recent").DisabledPlugins!=null && saved.Profiles.Find(p=>p.Id=="recent").DisabledPlugins.Count==1,"plugin choice persists");
    list.SelectedItem=old;Verify(view.Items.Count==1 && view.Items[0].Checked,"switching game restores independent plugin choice");
    var clone=recent.Copy();clone.DisabledPlugins.Clear();Verify(recent.DisabledPlugins!=null && recent.DisabledPlugins.Count==1,"profile copy isolates plugin list");
