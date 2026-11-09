@@ -18,17 +18,14 @@ internal static class GameUpdates {
   return Parse(File.ReadAllText(path));
  }
  static Declaration Parse(string json) {
-  var data=Object(new JavaScriptSerializer().DeserializeObject(json));
+  var data=ManifestFormat.Game(json);
   if(!data.ContainsKey("game"))return null;
   var game=Object(data["game"]);string repository=Text(game,"repository"),version=Text(game,"version");
-  Uri uri;
-  if(!Uri.TryCreate(repository,UriKind.Absolute,out uri)||uri.Scheme!="https"||!String.IsNullOrEmpty(uri.UserInfo)||!String.IsNullOrEmpty(uri.Query)||!String.IsNullOrEmpty(uri.Fragment)||!uri.IsDefaultPort)throw new IOException("游戏仓库必须填写完整的 HTTPS 仓库地址。");
-  string project=uri.AbsolutePath.Trim('/');if(project.EndsWith(".git"))project=project.Substring(0,project.Length-4);
-  if((uri.Host!="github.com"&&uri.Host!="gitgud.io")||!Regex.IsMatch(project,@"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+$")||project.Split('/').Any(x=>x=="."||x=="..")||(uri.Host=="github.com"&&project.Split('/').Length!=2))throw new IOException("游戏仓库地址仅支持 GitHub 和 GitGud 项目。");
+  var repo=ManifestFormat.Repository(repository);string project=repo.Project;
   if(String.IsNullOrWhiteSpace(version))throw new IOException("游戏声明缺少当前版本号。");
   string branch=Text(game,"branch");if(String.IsNullOrWhiteSpace(branch))branch="main";
   if(branch.Length>200||branch.Any(Char.IsControl)||branch.StartsWith("-")||branch.Contains(".."))throw new IOException("游戏发布分支无效。");
-  return new Declaration {Branch=branch,Repository="https://"+uri.Host+"/"+project,Host=uri.Host,Project=project,Version=version};
+  return new Declaration {Branch=branch,Repository=repo.Url,Host=repo.Host,Project=project,Version=version};
  }
  internal static int? Compare(string remote,string local) {
   var regex=new Regex(@"^[vV]?(\d+(?:\.\d+){1,3})(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$");

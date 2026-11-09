@@ -12,7 +12,7 @@ internal static class GamePlugins {
  internal static bool Declared(string game) {return File.Exists(Path.Combine(game,"ere.launcher.json"));}
  static Dictionary<string,object> Obj(object value){return (Dictionary<string,object>)value;}
  static string Text(Dictionary<string,object> value,string key){return Convert.ToString(value[key]);}
- static object Read(string path){return new JavaScriptSerializer().DeserializeObject(File.ReadAllText(path));}
+ static object Read(string path){string json=File.ReadAllText(path);return Path.GetFileName(path)=="plugin.json"?ManifestFormat.Plugin(json):ManifestFormat.Game(json);}
  static object[] Requests(string game) {
   var data=Obj(Read(Path.Combine(game,"ere.launcher.json")));
   return data.ContainsKey("plugins")?(object[])data["plugins"]:new object[0];
@@ -47,7 +47,7 @@ internal static class GamePlugins {
   var codeCache=new Dictionary<string,string>();
   foreach(var entry in Requests(game)) {
    var request=Obj(entry);string cache=Cache(request);
-   var state=new State {Key=Key(request),Id=Text(request,"id"),Repository=Text(request,"source")+"/"+Text(request,"repository"),Request=request,Name=Text(request,"id"),EngineVersions=VersionLabel(request),
+   var state=new State {Key=Key(request),Id=Text(request,"id"),Repository="https://github.com/"+Text(request,"repository"),Request=request,Name=Text(request,"id"),EngineVersions=VersionLabel(request),
     Fallback=request.ContainsKey("fallback") && request["fallback"] is bool && (bool)request["fallback"],Enabled=!Disabled(profile,Key(request))};
    state.Installed=File.Exists(Path.Combine(cache,"plugin.json"));state.Status=state.Installed?"已安装":"未安装";
    if(state.Installed)try {

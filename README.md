@@ -69,7 +69,7 @@ GPL-2.0，参见源码中的 LICENSE 和 THIRD_PARTY_NOTICES.md。启动器“�
 
 安装成功后自动清理使用的 ZIP 安装包和解压暂存（包括手动选择的 ZIP）。安装失败保留手动选择的原安装包以便重试，直链下载的未完成文件会清理。安装进行中暂不允许退出启动器，以便完成安装和清理。
 
-## 独立插件声明（v0.5.0）
+## 独立插件声明（旧格式，继续兼容）
 游戏根目录 ere.launcher.json：
 ```json
 {"plugins":[{"id":"ere-keystate","source":"github","repository":"Werenor/ere-keystate","fallback":true}]}
@@ -101,3 +101,7 @@ source/repository/id 为插件身份。缺失时弹窗选择下载、兼容运�
 左侧优先显示声明版本。无法比较的版本仅显示差异，不猜测先后。检查是只读操作，不下载、解压、覆盖或搬移游戏、sav、存档或玩家设置；确认后仅在浏览器打开固定 SHA 下载链接。网络错误、缺失分支或声明显示检查失败，不冒充已是最新。当前不执行游戏原地覆盖更新。
 
 启动器自身和独立插件仍使用各自的 GitHub Releases。
+
+## 统一声明格式（下一版）
+
+新声明统一使用完整HTTPS仓库地址和整数 `schemaVersion: 1`，不再使用 `source`。详见[格式规范](docs/manifest-format.md)、[游戏 Schema](schemas/ere.launcher.schema.json)和[插件 Schema](schemas/plugin.schema.json)。旧的v0.6.0启动器不支持新插件声明，需先升级启动器再分发新声明。
