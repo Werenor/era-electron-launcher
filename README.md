@@ -102,6 +102,8 @@ source/repository/id 为插件身份。缺失时弹窗选择下载、兼容运�
 
 启动器自身和独立插件仍使用各自的 GitHub Releases。
 
-## 统一声明格式（下一版）
+## 统一声明格式（v0.7.0）
 
 新声明统一使用完整HTTPS仓库地址和整数 `schemaVersion: 1`，不再使用 `source`。详见[格式规范](docs/manifest-format.md)、[游戏 Schema](schemas/ere.launcher.schema.json)和[插件 Schema](schemas/plugin.schema.json)。旧的v0.6.0启动器不支持新插件声明，需先升级启动器再分发新声明。
+
+升级顺序：先将启动器整包更新到v0.7.0，再更新游戏。旧启动器可使用“检查启动器更新”打开新版Release；新启动器继续支持旧游戏声明，原插件缓存与每游戏启停设置不变。保留自己的游戏目录、存档及启动器配置。
