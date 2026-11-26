@@ -1,6 +1,6 @@
 # Third-party notices
 
-Era-Electron启动器 is an independent third-party launcher. It is not an official Era-Electron release and is not affiliated with its developers.
+EreDeck is an independent third-party launcher. It is not an official Era-Electron release and is not affiliated with its developers.
 
 ## Era-Electron
 

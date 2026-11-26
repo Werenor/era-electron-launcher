@@ -30,8 +30,8 @@ internal sealed class LauncherForm : Form {
     string lastLog;
     bool loading, dirty, closeAfterRun, installing;
     internal LauncherForm(LauncherConfig data) {
-        config = data; Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
-        Text = "Era-Electron启动器 v0.7.0"; ClientSize = new Size(1100, 730); MinimumSize = new Size(980, 690);
+        config = data; Icon = new Icon(typeof(LauncherForm), "EreDeck.ico");
+        Text = "EreDeck v0.8.0"; ClientSize = new Size(1100, 730); MinimumSize = new Size(980, 690);
         StartPosition = FormStartPosition.CenterScreen; Font = new Font("Microsoft YaHei UI", 9.5f);
         BackColor = Color.FromArgb(244, 246, 250); AutoScaleMode = AutoScaleMode.Font;
         BuildSidebar(); BuildContent(); RefreshEngines(); RefreshProfiles(config.SelectedId);
@@ -50,7 +50,7 @@ internal sealed class LauncherForm : Form {
     }
     void BuildSidebar() {
         sidebar.Dock = DockStyle.Left; sidebar.Width = 260; sidebar.Padding = new Padding(18); sidebar.BackColor = Color.FromArgb(24, 36, 57);
-        var title = new Label { Text = "Era-Electron", ForeColor = Color.White, Font = new Font(Font.FontFamily, 16, FontStyle.Bold), Dock = DockStyle.Top, Height = 42 };
+        var title = new Label { Text = "EreDeck", ForeColor = Color.White, Font = new Font(Font.FontFamily, 16, FontStyle.Bold), Dock = DockStyle.Top, Height = 42 };
         var sub = new Label { Text = "游戏列表", ForeColor = Color.FromArgb(153, 175, 207), Dock = DockStyle.Top, Height = 32 };
         var top = new Panel { Dock = DockStyle.Top, Height = 122 }; search.Dock = DockStyle.Bottom; search.Height = 28;
         var searchLabel = new Label { Text = "搜索游戏", ForeColor = Color.LightSteelBlue, Top = 76, Height = 22 };
@@ -114,11 +114,10 @@ internal sealed class LauncherForm : Form {
         Row(table, "游戏名称", name, 0); Row(table, "游戏目录", directory, 1); Row(table, "引擎安装", engines, 2); Row(table, "窗口尺寸", dimensions, 3); Row(table, "文字字号", font, 4); Row(table, "窗口行为", maximize, 5);
 
         var actions = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 45 };
-        actions.Controls.Add(Button("使用游戏原始窗口", (s, e) => { customWindow.Checked=false; width.Value = 1200; height.Value = 1000; font.Value = 16; maximize.Checked = false; }));
         saveHint.AutoSize = true; saveHint.ForeColor = Color.FromArgb(160, 110, 32); saveHint.Padding = new Padding(0, 9, 0, 0); actions.Controls.Add(saveHint);
         settings.Controls.Add(actions); settings.Controls.Add(table);
         customWindow.CheckedChanged += (s,e)=>{ UpdateWindowControls(); Edited(s,e); };
-        name.TextChanged += Edited; engines.SelectedIndexChanged += (s,e) => { if (loading) return; UpdateModes("standard"); Edited(s,e); }; width.ValueChanged += Edited; height.ValueChanged += Edited; font.ValueChanged += Edited; maximize.CheckedChanged += Edited;
+        name.TextChanged += Edited; engines.SelectedIndexChanged += (s,e) => { if (loading) return; UpdateModes("standard"); Edited(s,e); }; width.ValueChanged += Edited; height.ValueChanged += Edited; font.ValueChanged += Edited; maximize.CheckedChanged += (s,e) => { UpdateWindowControls(); Edited(s,e); };
     }
     void BuildPlugins() {
         pluginPage.Padding=new Padding(12);pluginPage.BackColor=Color.White;
@@ -204,7 +203,7 @@ internal sealed class LauncherForm : Form {
     }
     void BuildAbout() {
         about.Padding=new Padding(16);
-        var title=new Label {Dock=DockStyle.Top,Height=76,Text="Era-Electron 启动器 v0.7.0\r\n独立第三方启动器 · GPL-2.0 许可证",Font=new Font(Font.FontFamily,12),Padding=new Padding(0,5,0,0)};
+        var title=new Label {Dock=DockStyle.Top,Height=76,Text="EreDeck v0.8.0\r\n独立第三方启动器 · GPL-2.0 许可证",Font=new Font(Font.FontFamily,12),Padding=new Padding(0,5,0,0)};
         var documents=new TabControl {Dock=DockStyle.Fill};
         foreach(var entry in new[] {new[]{"许可证","Launcher.LICENSE"},new[]{"第三方声明","Launcher.NOTICES"}}) {
             var page=new TabPage(entry[0]) {Padding=new Padding(10)};
@@ -232,7 +231,11 @@ internal sealed class LauncherForm : Form {
         customWindow.Enabled=adapted; UpdateWindowControls();
         loading=old;
     }
-    void UpdateWindowControls() { width.Enabled=height.Enabled=font.Enabled=maximize.Enabled=customWindow.Checked && EngineCatalog.Adapted(engines.SelectedItem as EngineInstall); }
+    void UpdateWindowControls() {
+        bool customized = customWindow.Checked && EngineCatalog.Adapted(engines.SelectedItem as EngineInstall);
+        font.Enabled = maximize.Enabled = customized;
+        width.Enabled = height.Enabled = customized && !maximize.Checked;
+    }
     void Edited(object sender, EventArgs e) { if (!loading && current != null) { dirty=true; saveHint.Text=""; autoSave.Stop(); autoSave.Start(); } }
     void RefreshProfiles(string selected) {
         loading = true; profiles.Items.Clear();
@@ -418,15 +421,52 @@ internal sealed class LauncherForm : Form {
         finally {if(button!=null&&!button.IsDisposed)button.Enabled=true;}
     }
     async void CheckUpdate(object sender, EventArgs e) {
-        var button=sender as Button;if(button!=null)button.Enabled=false;
+        if (installing || session != null) {
+            Info("请先等待安装完成或退出正在运行的游戏。");
+            return;
+        }
+        var button = sender as Button;
+        if (button != null) button.Enabled = false;
+        string previousStatus = status.Text;
+        bool wasLaunchEnabled = launch.Enabled;
+        installing = true;
+        sidebar.Enabled = tabs.Enabled = launch.Enabled = false;
         try {
-            var release=await Downloads.LauncherLatest();
-            Version latest; if(!Version.TryParse(release.Tag.TrimStart('v','V'),out latest))throw new IOException("发布版本号无法识别。");
-            if(latest<=new Version("0.7.0")) {Info("当前已是最新版本（v0.7.0）。");return;}
-            if(MessageBox.Show(this,"发现新版 "+release.Tag+"\n\n"+release.Notes+"\n\n打开发布页下载？","启动器更新",MessageBoxButtons.YesNo,MessageBoxIcon.Information)==DialogResult.Yes)
-                Process.Start(new ProcessStartInfo(release.Url){UseShellExecute=true});
-        } catch(Exception error) {Error("更新检查失败："+error.Message);}
-        finally {installing=false;if(button!=null)button.Enabled=true;}
+            var release = await Downloads.LauncherLatest();
+            Version latest;
+            if (!Version.TryParse(release.Tag.TrimStart('v','V'), out latest))
+                throw new IOException("发布版本号无法识别。");
+            var assembly = typeof(LauncherForm).Assembly.GetName().Version;
+            var currentVersion = new Version(assembly.Major, assembly.Minor, assembly.Build);
+            if (latest <= currentVersion) {
+                Info("当前已是最新版本（v" + currentVersion + "）。");
+                return;
+            }
+            if (String.IsNullOrEmpty(release.PackageUrl) || String.IsNullOrEmpty(release.ChecksumUrl)) {
+                if (MessageBox.Show(this, "此版本没有可自动校验的完整更新包。打开发布页？",
+                    "EreDeck 更新", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
+                    Process.Start(new ProcessStartInfo(release.Url) { UseShellExecute = true });
+                return;
+            }
+            if (MessageBox.Show(this, "发现新版 " + release.Tag + "\n\n" + release.Notes
+                + "\n\n下载并安装更新？完成后将重启 EreDeck。", "EreDeck 更新",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Information) != DialogResult.Yes) return;
+            if (dirty && current != null && !SaveEditor(true)) return;
+            status.Text = "正在下载并校验启动器更新…";
+            await LauncherUpdater.PrepareAndStart(release, latest);
+            installing = false;
+            Close();
+        } catch (Exception error) {
+            Error("启动器更新失败：" + error.Message);
+        } finally {
+            installing = false;
+            if (!IsDisposed) {
+                sidebar.Enabled = tabs.Enabled = true;
+                launch.Enabled = wasLaunchEnabled;
+                status.Text = previousStatus;
+            }
+            if (button != null && !button.IsDisposed) button.Enabled = true;
+        }
     }
     void CheckEngine(object sender, EventArgs e) {
         if (engineList.SelectedItems.Count == 0) { Info("请先选中一个引擎。"); return; }
@@ -436,7 +476,7 @@ internal sealed class LauncherForm : Form {
         catch (Exception error) { Error(error.Message); } finally { Cursor = Cursors.Default; }
     }
     void Launch(object sender, EventArgs e) {
-        if (session != null || current==null || !EnsureGameLocation()) return;
+        if (installing || session != null || current==null || !EnsureGameLocation()) return;
         var selectedEngine=engines.SelectedItem as EngineInstall;
         if(selectedEngine==null) {Error("请先登记并选择一个引擎版本。");return;}
         if(!EnsureEngineLocation(selectedEngine) || !SaveEditor(true))return;
@@ -469,7 +509,7 @@ internal sealed class LauncherForm : Form {
     }
     void StopGame(object sender, EventArgs e) { if (session != null && MessageBox.Show("停止游戏可能丢失未保存的进度。确定停止？", "停止游戏", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes) { session.Stop(); stop.Enabled = false; } }
     void OnLauncherClosing(object sender, FormClosingEventArgs e) {
-        if(installing) {e.Cancel=true;Info("引擎正在下载或安装，请完成后再退出，确保安装包和暂存得到清理。");return;}
+        if(installing) {e.Cancel=true;Info("正在检查更新、下载或安装，请稍后再退出。");return;}
         if (session != null) { e.Cancel = true; if (!closeAfterRun && MessageBox.Show("游戏仍在运行。停止并清理后退出启动器？", "退出启动器", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes) { closeAfterRun = true; session.Stop(); } }
         else { autoSave.Stop(); if(dirty && current != null) SaveEditor(false); Persist(); }
     }
@@ -479,6 +519,6 @@ internal sealed class LauncherForm : Form {
     void OpenGame(object sender, EventArgs e) { if (current != null) OpenFolder(LauncherPaths.Resolve(current.Directory)); }
     void OpenLogs(object sender, EventArgs e) { string folder = Path.Combine(LauncherPaths.UserRoot, "logs"); Directory.CreateDirectory(folder); OpenFolder(folder); }
     void OpenFolder(string folder) { try { if (!Directory.Exists(folder)) { Error("目录不存在：" + folder); return; } Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true }); } catch (Exception e) { Error(e.Message); } }
-    void Error(string message) { MessageBox.Show(this, message, "Era-Electron启动器", MessageBoxButtons.OK, MessageBoxIcon.Error); }
-    void Info(string message) { MessageBox.Show(this, message, "Era-Electron启动器", MessageBoxButtons.OK, MessageBoxIcon.Information); }
+    void Error(string message) { MessageBox.Show(this, message, "EreDeck", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+    void Info(string message) { MessageBox.Show(this, message, "EreDeck", MessageBoxButtons.OK, MessageBoxIcon.Information); }
 }

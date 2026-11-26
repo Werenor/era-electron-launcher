@@ -63,7 +63,8 @@ internal static class LauncherStore {
         if (profile == null || String.IsNullOrWhiteSpace(profile.Name)) throw new InvalidDataException("游戏名称不能为空。");
         if (!IsGame(LauncherPaths.Resolve(profile.Directory))) throw new InvalidDataException("游戏目录不存在，或缺少 ere/main.js / 打包入口。");
         
-        if (profile.CustomWindow && (profile.Width < 640 || profile.Width > 3840 || profile.Height < 480 || profile.Height > 2160 || profile.FontSize < 10 || profile.FontSize > 32)) throw new InvalidDataException("窗口尺寸或字号超出范围。");
+        if (profile.CustomWindow && (profile.FontSize < 10 || profile.FontSize > 32 || (!profile.AutoMax &&
+            (profile.Width < 640 || profile.Width > 3840 || profile.Height < 480 || profile.Height > 2160)))) throw new InvalidDataException("窗口尺寸或字号超出范围。");
         if (profile.ModeId != "standard" && profile.ModeId != "keystate") throw new InvalidDataException("未知的启动模式。");
     }
     internal static LauncherConfig Load() {

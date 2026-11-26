@@ -79,7 +79,12 @@ internal sealed class GameSession {
             start.EnvironmentVariables.Remove("ELECTRON_RUN_AS_NODE");
             start.EnvironmentVariables["PORT_ARCADE_GAME_PATH"] = gameDirectory;
             start.EnvironmentVariables.Remove("PORT_ARCADE_WINDOW_JSON");
-            if(profile.CustomWindow) start.EnvironmentVariables["PORT_ARCADE_WINDOW_JSON"] = LauncherStore.Json.Serialize(new { width = profile.Width, height = profile.Height, fontSize = profile.FontSize, autoMax = profile.AutoMax });
+            if (profile.CustomWindow) {
+                object window = profile.AutoMax
+                    ? (object)new { fontSize = profile.FontSize, autoMax = true }
+                    : new { width = profile.Width, height = profile.Height, fontSize = profile.FontSize, autoMax = false };
+                start.EnvironmentVariables["PORT_ARCADE_WINDOW_JSON"] = LauncherStore.Json.Serialize(window);
+            }
             Log("游戏：" + gameDirectory); Log("引擎：" + install.Name + " / " + mode.Name); Log("临时会话：" + session);
             process = Process.Start(start); result.Started = true; Status("运行中 · " + profile.Name);
             bool seenWindow = false; DateTime missingSince = DateTime.MaxValue, stoppingSince = DateTime.MaxValue;

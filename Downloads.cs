@@ -14,14 +14,14 @@ internal sealed class DownloadAsset {
     internal bool Direct { get { Uri uri; return Uri.TryCreate(Url,UriKind.Absolute,out uri) && uri.Scheme=="https" && uri.AbsolutePath.EndsWith(".zip",StringComparison.OrdinalIgnoreCase); } }
     public override string ToString() {return Tag+" · "+Name+(Direct?"（直接下载）":"（浏览器下载）");}
 }
-internal sealed class LauncherRelease { internal string Tag, Url, Notes; }
+internal sealed class LauncherRelease { internal string Tag, Url, Notes, PackageName, PackageUrl, ChecksumUrl; }
 internal static class Downloads {
     internal const string EngineApi="https://gitgud.io/api/v4/projects/29406/releases?per_page=50";
     internal const string UpdateApi="https://api.github.com/repos/Werenor/era-electron-launcher/releases/latest";
     static HttpClient Client() {
         ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
         var client=new HttpClient {Timeout=TimeSpan.FromSeconds(30)};
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("Era-Electron-Launcher/0.7.0");return client;
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("EreDeck/0.8.0");return client;
     }
     static Dictionary<string,object> Dict(object value) {return (Dictionary<string,object>)value;}
     static string Str(Dictionary<string,object> d,string key) {return d.ContainsKey(key)?Convert.ToString(d[key]):"";}
@@ -45,9 +45,50 @@ internal static class Downloads {
             string url=Str(data,"html_url");
             if(!url.StartsWith("https://github.com/Werenor/era-electron-launcher/releases/",StringComparison.Ordinal))throw new IOException("更新地址不属于启动器项目。");
             string notes=Str(data,"body"); if(notes.Length>1800)notes=notes.Substring(0,1800)+"…";
-            return new LauncherRelease {Tag=Str(data,"tag_name"),Url=url,Notes=notes};
+            string tag=Str(data,"tag_name");
+            var release = new LauncherRelease {Tag=tag, Url=url, Notes=notes};
+            string prefix = "https://github.com/Werenor/era-electron-launcher/releases/download/"
+                + Uri.EscapeDataString(tag) + "/";
+            object assets;
+            if (data.TryGetValue("assets", out assets) && assets is object[]) {
+                foreach (var item in (object[])assets) {
+                    var asset = Dict(item);
+                    string name = Str(asset,"name"), link = Str(asset,"browser_download_url");
+                    if (link != prefix + name) continue;
+                    if (name == "SHA256SUMS.txt") release.ChecksumUrl = link;
+                    if (name == "Era-Electron-Launcher-" + tag + "-win-x64.zip"
+                        || name == "EreDeck-" + tag + "-win-x64.zip") {
+                        release.PackageName = name;
+                        release.PackageUrl = link;
+                    }
+                }
+            }
+            return release;
         }
     }
+    internal static async Task DownloadLauncherFile(string url, string path, long limit) {
+        using (var client = Client())
+        using (var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead)) {
+            response.EnsureSuccessStatusCode();
+            long? length = response.Content.Headers.ContentLength;
+            if (length > limit) throw new IOException("更新附件超过大小限制。");
+            using (var input = await response.Content.ReadAsStreamAsync())
+            using (var output = new FileStream(path, FileMode.CreateNew)) {
+                var buffer = new byte[32768];
+                using (var timeout = new System.Threading.CancellationTokenSource(TimeSpan.FromMinutes(2))) {
+                    long total = 0;
+                    int read;
+                    while ((read = await input.ReadAsync(buffer, 0, buffer.Length, timeout.Token)) > 0) {
+                        total += read;
+                        if (total > limit) throw new IOException("更新附件超过大小限制。");
+                        await output.WriteAsync(buffer, 0, read, timeout.Token);
+                    }
+                    if (length.HasValue && total != length.Value) throw new IOException("更新附件下载不完整。");
+                }
+            }
+        }
+    }
+
     internal static async Task<string> DownloadAndInstall(DownloadAsset asset,string parent,Action<string> progress) {
         if(!asset.Direct)throw new IOException("此资源需要浏览器下载。");
         string cache=Path.Combine(LauncherPaths.UserRoot,"downloads");Directory.CreateDirectory(cache);
